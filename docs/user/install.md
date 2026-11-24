@@ -11,13 +11,13 @@ launch T3 Code and configure providers afterwards.
 ## Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://github.com/golitedev/t3privacy/releases/latest/download/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://github.com/golitedev/t3privacy/releases/latest/download/install.ps1 | iex
 ```
 
 This installs the `t3` command to `~/.local/bin`. If that folder is not on your
@@ -47,12 +47,20 @@ command it names and open the pairing URL to connect to that server. Stop it
 before starting a replacement, or use a different `--base-dir` for an
 independent server.
 
-To try T3 Code once without installing it, run `npx t3@latest` instead (needs
-Node.js for `npx`). It offers to install the `t3` command first. If you say no,
-it asks again at the next minor release, and `npx t3 install` installs it later.
-`npx t3` always runs the version npm picked, even when a `t3` is installed. On
-the nightly train, run your installed `t3` (for example `t3 connect`), not
-`npx t3`, which runs the latest stable release.
+The installer defaults to this fork's stable releases. To install a published nightly:
+
+```bash
+curl -fsSL https://github.com/golitedev/t3privacy/releases/latest/download/install.sh | T3CODE_CHANNEL=nightly sh
+```
+
+To install an exact version, set `T3CODE_VERSION=0.1.11` for the installer. On
+Windows, set `$env:T3CODE_VERSION = "0.1.11"` before running the PowerShell installer.
+The installer verifies the archive against the release's `SHA256SUMS` file.
+`t3 update` and manual desktop update checks also use this fork's GitHub releases.
+Automatic desktop update polling remains disabled.
+
+The upstream `t3` npm package and upstream package-manager entries install T3 Code,
+not this fork. No npm account or package is needed to install this fork.
 
 ### Intel Macs
 
@@ -61,8 +69,8 @@ run a server there, build it from source with `vp`, which provides the Node vers
 ([Install vp](../operations/00_development.md#first-checkout)):
 
 ```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
+git clone https://github.com/golitedev/t3privacy
+cd t3privacy && vp i && vp run build:desktop
 node apps/server/dist/bin.mjs
 ```
 
@@ -71,18 +79,10 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/pingdotgg/t3code/releases),
-or use a package manager:
-
-| Platform           | Install                                                      |
-| ------------------ | ------------------------------------------------------------ |
-| Windows            | `winget install T3Tools.T3Code`                              |
-| Windows (Scoop)    | `scoop install extras/t3code`                                |
-| macOS              | `brew install --cask t3-code`                                |
-| Debian, Ubuntu     | `sudo apt install ./T3-Code-*.deb`                           |
-| Arch Linux         | `yay -S t3code-bin`                                          |
-| Arch Linux nightly | `yay -S t3code-nightly-bin`                                  |
-| Nix                | `nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code` |
+Download this fork's desktop app from
+[GitHub Releases](https://github.com/golitedev/t3privacy/releases/latest).
+Choose a DMG for macOS, an installer for Windows, or an AppImage / `.deb` for Linux.
+macOS and Windows builds are unsigned unless signing credentials are configured.
 
 ### Linux
 
@@ -180,7 +180,7 @@ on web and desktop. The store apps work with both stable and Nightly servers. Te
 
 - **iPhone and iPad:** TestFlight is invite-only.
 - **Android:** download an APK from the
-  [Android beta releases](https://github.com/pingdotgg/t3code/releases?q=android-beta-).
+  [Android beta releases](https://github.com/golitedev/t3privacy/releases?q=android-beta-).
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and
