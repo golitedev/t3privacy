@@ -8,13 +8,12 @@ import {
 } from "@t3tools/contracts";
 import * as Result from "effect/Result";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import { FetchHttpClient, type HttpMethod } from "effect/http";
 
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import type { PreparedConnection, PreparedHttpAuthorization } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
+import * as Dpop from "../relay/dpopSigner.ts";
 import {
   executeEnvironmentHttpRequest,
   makeEnvironmentHttpApiGroupClient,
@@ -49,10 +48,10 @@ const withEnvironmentRequestInit = <A, E, R>(
   requestInit: RequestInit | undefined,
   request: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> => {
-  if (authorization !== null && requestInit === undefined) return request;
   return request.pipe(
     Effect.provideService(FetchHttpClient.RequestInit, {
       ...requestInit,
+      redirect: "error",
       ...(authorization === null ? { credentials: "include" as const } : {}),
     }),
   );
@@ -63,7 +62,7 @@ const buildEnvironmentAuthHeaders = Effect.fn("environmentHttpAuth.buildEnvironm
     authorization: PreparedHttpAuthorization | null,
     method: HttpMethod.HttpMethod,
     url: string,
-    signer: Option.Option<ManagedRelay.ManagedRelayDpopSigner["Service"]>,
+    signer: Option.Option<Dpop.DpopSigner["Service"]>,
   ): Effect.fn.Return<EnvironmentHttpAuthHeaders, RemoteEnvironmentAuthFetchError> {
     if (authorization === null) {
       return {};
@@ -96,11 +95,6 @@ const buildEnvironmentAuthHeaders = Effect.fn("environmentHttpAuth.buildEnvironm
   },
 );
 
-/**
- * A DPoP request is T3 Connect work, so its span starts an exported trace that
- * the environment continues; its local caller's span would leave that trace
- * without a root.
- */
 export const executeAuthenticatedEnvironmentHttpRequest = <
   Group extends Parameters<typeof makeEnvironmentHttpApiGroupClient>[1],
   A,
@@ -109,12 +103,7 @@ export const executeAuthenticatedEnvironmentHttpRequest = <
 >(
   input: Parameters<typeof executeEnvironmentRequest<Group, A, E, R>>[0],
 ) =>
-  input.prepared.httpAuthorization?._tag === "Dpop"
-    ? executeEnvironmentRequest(input).pipe(
-        Effect.withSpan(ENVIRONMENT_REQUEST_SPAN, { root: true }),
-        withRelayClientTracing,
-      )
-    : executeEnvironmentRequest(input).pipe(Effect.withSpan(ENVIRONMENT_REQUEST_SPAN));
+  executeEnvironmentRequest(input).pipe(Effect.withSpan(ENVIRONMENT_REQUEST_SPAN));
 
 /** Sends the request with this client's own credentials on the supervised environment. */
 export const executeConnectedEnvironmentHttpRequest = Effect.fn(
@@ -136,7 +125,7 @@ export const executeConnectedEnvironmentHttpRequest = Effect.fn(
   return yield* executeAuthenticatedEnvironmentHttpRequest({
     ...input,
     prepared: prepared.value,
-    signer: yield* Effect.serviceOption(ManagedRelay.ManagedRelayDpopSigner),
+    signer: yield* Effect.serviceOption(Dpop.DpopSigner),
     remoteAuthorization: yield* Effect.serviceOption(
       RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
     ),
@@ -155,7 +144,7 @@ const executeEnvironmentRequest = Effect.fnUntraced(function* <
     PreparedConnection,
     "environmentId" | "httpBaseUrl" | "httpAuthorization" | "target"
   >;
-  readonly signer: Option.Option<ManagedRelay.ManagedRelayDpopSigner["Service"]>;
+  readonly signer: Option.Option<Dpop.DpopSigner["Service"]>;
   readonly remoteAuthorization?: Option.Option<
     RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]
   >;
@@ -181,7 +170,7 @@ const executeEnvironmentRequest = Effect.fnUntraced(function* <
   RemoteEnvironmentRequestError,
   Effect.Services<ReturnType<typeof makeEnvironmentHttpApiGroupClient<Group>>> | R
 > {
-  let httpBaseUrl = input.prepared.httpBaseUrl;
+  const httpBaseUrl = input.prepared.httpBaseUrl;
   const requestUrlFor = (baseUrl: string) =>
     input.url(makeEnvironmentHttpApiUrlBuilder(baseUrl)[input.group]);
   return yield* Effect.gen(function* () {
@@ -193,7 +182,7 @@ const executeEnvironmentRequest = Effect.fnUntraced(function* <
         if (remote === undefined || Option.isNone(remote)) {
           return yield* new RemoteEnvironmentAuthFetchError({
             ...translatableMessage(
-              msg("No relay authorization service is available for the environment request."),
+              msg("No authorization service is available for the environment request."),
             ),
             cause: input.prepared.target._tag,
           });
@@ -204,23 +193,12 @@ const executeEnvironmentRequest = Effect.fnUntraced(function* <
             cause,
           });
         const direct = authorization.directConnection;
-        if (direct !== undefined) {
-          authorization = yield* remote.value
-            .authorizeDirectDpopHttp(direct, rejectedAccessToken)
-            .pipe(Effect.mapError(authFetchError));
-        } else {
-          const current = yield* remote.value
-            .authorizeDpopHttp({
-              expectedEnvironmentId: input.prepared.environmentId,
-              ...(rejectedAccessToken === undefined ? {} : { rejectedAccessToken }),
-            })
-            .pipe(Effect.mapError(authFetchError));
-          // A learned direct route keeps its own origin; only the token renews.
-          if (input.prepared.target._tag === "RelayConnectionTarget") {
-            httpBaseUrl = current.httpBaseUrl;
-          }
-          authorization = current.httpAuthorization;
+        if (direct === undefined) {
+          return yield* authFetchError("Missing direct connection");
         }
+        authorization = yield* remote.value
+          .authorizeDirectDpopHttp(direct, rejectedAccessToken)
+          .pipe(Effect.mapError(authFetchError));
       }
 
       const requestUrl = requestUrlFor(httpBaseUrl);

@@ -28,7 +28,7 @@ import {
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
-import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
+import { resolveDesktopPairingUrl } from "./pairingUrls";
 import {
   canRevokeOtherClients,
   isQrShareableEndpoint,
@@ -60,7 +60,7 @@ import {
 } from "~/environments/primary";
 import { authEnvironment } from "~/state/auth";
 import { readEnvironmentScope } from "~/state/session";
-import { useManagedPolicy, usePrimaryManagedPolicy } from "~/state/managedPolicy";
+import { useManagedPolicy } from "~/state/managedPolicy";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { ManagedControl } from "../ManagedPolicy";
 import { openUseInAnotherApp } from "../mcp/UseInAnotherAppDialog";
@@ -69,7 +69,6 @@ import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "./itemRows";
 import {
   formatAccessTimestamp,
   selectPairingEndpoint,
-  isTailscaleHttpsEndpoint,
   endpointDefaultPreferenceKey,
   resolveAdvertisedEndpointPairingUrl,
   resolveCurrentOriginPairingUrl,
@@ -169,10 +168,6 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
   const qrPanelId = useId();
 
   const currentOriginPairingUrl = credential ? resolveCurrentOriginPairingUrl(credential) : null;
-  const hostedPairingUrl =
-    credential && endpointUrl != null && endpointUrl !== ""
-      ? resolveHostedPairingUrl(endpointUrl, credential)
-      : null;
   const endpointPairingUrl = (() => {
     const endpoint = selectPairingEndpoint(endpoints, defaultEndpointKey);
     return endpoint && credential
@@ -208,7 +203,7 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
   const shareablePairingUrl =
     endpointPairingUrl ??
     (credential && endpointUrl != null && endpointUrl !== ""
-      ? (hostedPairingUrl ?? resolveDesktopPairingUrl(endpointUrl, credential))
+      ? resolveDesktopPairingUrl(endpointUrl, credential)
       : servedByEnvironment
         ? currentOriginPairingUrl
         : null);
@@ -925,27 +920,15 @@ type AdvertisedEndpointListRowProps = {
   endpoint: AdvertisedEndpoint;
   isDefault: boolean;
   onSetDefault: (endpoint: AdvertisedEndpoint) => void;
-  onSetupTailscaleServe: (endpoint: AdvertisedEndpoint) => void;
-  onDisableTailscaleServe: (endpoint: AdvertisedEndpoint) => void;
-  isUpdatingTailscaleServe: boolean;
 };
 
 export const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow({
   endpoint,
   isDefault,
   onSetDefault,
-  onSetupTailscaleServe,
-  onDisableTailscaleServe,
-  isUpdatingTailscaleServe,
 }: AdvertisedEndpointListRowProps) {
   const gt = useGT();
   const isAvailable = endpoint.status === "available";
-  const needsTailscaleSetup = isTailscaleHttpsEndpoint(endpoint) && endpoint.status !== "available";
-  const canDisableTailscaleServe =
-    isTailscaleHttpsEndpoint(endpoint) && endpoint.status === "available";
-  const shouldShowEndpointUrl = !needsTailscaleSetup;
-  const m = useMessages();
-  const remoteDenial = managedCapabilityDenial(usePrimaryManagedPolicy(), "remoteClients", m);
   return (
     <div className={endpointRowClassName(isAvailable)}>
       {isDefault ? (
@@ -956,7 +939,7 @@ export const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow
           <h3 className="shrink-0 text-sm leading-5 font-medium text-foreground">
             {endpoint.label}
           </h3>
-          {shouldShowEndpointUrl ? (
+          {isAvailable ? (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -980,29 +963,7 @@ export const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow
               {gt("Default", { $context: "default endpoint badge" })}
             </span>
           ) : null}
-          {needsTailscaleSetup ? (
-            <ManagedControl reason={remoteDenial}>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => onSetupTailscaleServe(endpoint)}
-                disabled={isUpdatingTailscaleServe || remoteDenial !== undefined}
-              >
-                {isUpdatingTailscaleServe ? gt("Restarting…") : gt("Setup", { $context: "verb" })}
-              </Button>
-            </ManagedControl>
-          ) : null}
-          {canDisableTailscaleServe ? (
-            <Button
-              size="xs"
-              variant="destructive-outline"
-              onClick={() => onDisableTailscaleServe(endpoint)}
-              disabled={isUpdatingTailscaleServe}
-            >
-              {isUpdatingTailscaleServe ? gt("Restarting…") : gt("Disable")}
-            </Button>
-          ) : null}
-          {!needsTailscaleSetup && !isDefault ? (
+          {isAvailable && !isDefault ? (
             <Button size="xs" variant="outline" onClick={() => onSetDefault(endpoint)}>
               <T>Set as default</T>
             </Button>

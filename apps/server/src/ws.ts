@@ -1,3 +1,4 @@
+import { GuestShareCreateError, AgentFeedbackRequestError } from "@t3tools/contracts";
 import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
@@ -27,89 +28,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
-import {
-  AcpRegistryOperationError,
-  CommandId,
-  authScopeResponse,
-  AuthAccessStreamError,
-  type AuthAccessStreamEvent,
-  AuthOrchestrationOperateScope,
-  AuthTerminalOperateScope,
-  AuthProvidersManageScope,
-  type AuthEnvironmentScope,
-  ProviderDriverKind,
-  type ScheduledTaskListResult,
-  WorkflowRequestError,
-  AuthSessionId,
-  ClientConnectionMethod,
-  ClientDeviceType,
-  ClientOs,
-  ClientSurface,
-  ClientWebDeployment,
-  type DiscoveredLocalServerList,
-  type EditorId,
-  type FileManagerRevealKind,
-  type OrchestrationV2Command,
-  type GitActionProgressEvent,
-  type GitManagerServiceError,
-  type MessageId,
-  type AcpRegistryDeleteSessionInput,
-  type AcpRegistryDisableProviderInput,
-  type AcpRegistryListProvidersInput,
-  type AcpRegistryListSessionsInput,
-  type AcpRegistrySetProviderInput,
-  OrchestrationGetFullThreadDiffError,
-  OrchestrationSearchThreadsError,
-  OrchestrationV2SearchThreadError,
-  OrchestrationGetTurnDiffError,
-  ORCHESTRATION_V2_WS_METHODS,
-  ORCHESTRATION_PROTOCOL_QUERY_PARAM,
-  CLIENT_CAPABILITIES_QUERY_PARAM,
-  SETTINGS_SECRET_REFERENCES_CAPABILITY,
-  ORCHESTRATION_PROTOCOL_VERSION,
-  OrchestrationV2DispatchCommandError,
-  OrchestrationV2GetShellSnapshotError,
-  OrchestrationV2GetThreadProjectionError,
-  OrchestrationV2ThreadLaunchError,
-  type OrchestrationProjectShell,
-  type OrchestrationV2ShellSnapshot,
-  type OrchestrationV2ShellStreamItem,
-  type OrchestrationV2ThreadStreamItem,
-  type ApplicationStoredEvent,
-  type ProjectEntriesFailure,
-  type ProjectFileFailure,
-  type ProjectFileOperation,
-  type ProjectMutation,
-  ProjectListEntriesError,
-  ProjectReadFileError,
-  ProjectSearchContentsError,
-  ProjectSearchEntriesError,
-  ProjectWriteFileError,
-  ProjectMutationError,
-  ProviderUploadFeedbackError,
-  ProviderSetupError,
-  RelayClientInstallFailedError,
-  type RelayClientInstallProgressEvent,
-  type ServerConfig as ClientServerConfig,
-  type ServerConfigStreamEvent,
-  type ServerLifecycleStreamEvent,
-  type ServerProvider,
-  serverProviderDeltas,
-  type FilesystemBrowseFailure,
-  FilesystemBrowseError,
-  AssetWorkspaceContextNotFoundError,
-  AssetWorkspaceContextResolutionError,
-  SOURCE_CONTROL_MEDIA_ASSET,
-  ChatAttachmentId,
-  PersistChatAttachmentsError,
-  RpcClientId,
-  EnvironmentAuthorizationError,
-  ThreadId,
-  type TerminalMetadataStreamEvent,
-  type PullRequestRef,
-  WS_METHODS,
-  WsRpcGroup,
-} from "@t3tools/contracts";
+import { AcpRegistryOperationError, CommandId, authScopeResponse, AuthAccessStreamError, type AuthAccessStreamEvent, AuthOrchestrationOperateScope, AuthTerminalOperateScope, AuthProvidersManageScope, type AuthEnvironmentScope, ProviderDriverKind, type ScheduledTaskListResult, WorkflowRequestError, AuthSessionId, type DiscoveredLocalServerList, type EditorId, type FileManagerRevealKind, type GitActionProgressEvent, type GitManagerServiceError, type MessageId, type AcpRegistryDeleteSessionInput, type AcpRegistryDisableProviderInput, type AcpRegistryListProvidersInput, type AcpRegistryListSessionsInput, type AcpRegistrySetProviderInput, OrchestrationGetFullThreadDiffError, OrchestrationSearchThreadsError, OrchestrationV2SearchThreadError, OrchestrationGetTurnDiffError, ORCHESTRATION_V2_WS_METHODS, ORCHESTRATION_PROTOCOL_QUERY_PARAM, CLIENT_CAPABILITIES_QUERY_PARAM, SETTINGS_SECRET_REFERENCES_CAPABILITY, ORCHESTRATION_PROTOCOL_VERSION, OrchestrationV2DispatchCommandError, OrchestrationV2GetShellSnapshotError, OrchestrationV2GetThreadProjectionError, OrchestrationV2ThreadLaunchError, type OrchestrationProjectShell, type OrchestrationV2ShellSnapshot, type OrchestrationV2ShellStreamItem, type OrchestrationV2ThreadStreamItem, type ApplicationStoredEvent, type ProjectEntriesFailure, type ProjectFileFailure, type ProjectFileOperation, type ProjectMutation, ProjectListEntriesError, ProjectReadFileError, ProjectSearchContentsError, ProjectSearchEntriesError, ProjectWriteFileError, ProjectMutationError, ProviderUploadFeedbackError, ProviderSetupError, type ServerConfig as ClientServerConfig, type ServerConfigStreamEvent, type ServerLifecycleStreamEvent, type ServerProvider, serverProviderDeltas, type FilesystemBrowseFailure, FilesystemBrowseError, AssetWorkspaceContextNotFoundError, AssetWorkspaceContextResolutionError, SOURCE_CONTROL_MEDIA_ASSET, ChatAttachmentId, PersistChatAttachmentsError, RpcClientId, EnvironmentAuthorizationError, ThreadId, type TerminalMetadataStreamEvent, type PullRequestRef, WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
 import {
   HttpRouter,
   HttpServerRequest,
@@ -137,8 +56,6 @@ import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as Workflows from "./workflows/Workflows.ts";
 import * as WorkflowRuntime from "./workflows/WorkflowRuntime.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
-import * as FeedbackStore from "./feedback/FeedbackStore.ts";
-import * as GuestShareService from "./guest/GuestShareService.ts";
 import {
   bufferShellLiveStream,
   coalesceShellApplicationEvents,
@@ -259,9 +176,6 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
-import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
-import { commandFeatureUsage, featureUsage } from "./telemetry/FeatureUsage.ts";
-import type { TelemetryOwner } from "./telemetry/Identify.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
@@ -275,7 +189,6 @@ import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
-import * as OtlpEndpointCheck from "./observability/OtlpEndpointCheck.ts";
 import * as TextGenerators from "./textGeneration/TextGenerators.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as SourceControlSignIn from "./sourceControl/SourceControlSignIn.ts";
@@ -289,12 +202,10 @@ import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
 import { isNetworkPath } from "@t3tools/shared/path";
-import * as RelayClient from "@t3tools/shared/relayClient";
 import {
   SOCKET_FRAME_PARTS_QUERY_PARAM,
   splitLargeSocketFrames,
 } from "@t3tools/shared/socketFrameParts";
-import { isTelemetryIdHash } from "@t3tools/shared/telemetryId";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -799,15 +710,6 @@ function toAuthAccessStreamEvent(
   }
 }
 
-const isClientSurface = Schema.is(ClientSurface);
-const isClientConnectionMethod = Schema.is(ClientConnectionMethod);
-const isClientDeviceType = Schema.is(ClientDeviceType);
-const isClientOs = Schema.is(ClientOs);
-const isClientWebDeployment = Schema.is(ClientWebDeployment);
-const MAX_CLIENT_APP_VERSION_LENGTH = 64;
-const MAX_CLIENT_BROWSER_LENGTH = 64;
-const MAX_CLIENT_DEVICE_MODEL_LENGTH = 80;
-
 function hasCompatibleOrchestrationProtocol(url: URL): boolean {
   return (
     url.searchParams.get(ORCHESTRATION_PROTOCOL_QUERY_PARAM) ===
@@ -825,73 +727,6 @@ function shouldUseBoundedThreadSnapshot(input: {
   readonly acceptDeferredWork?: boolean;
 }): boolean {
   return input.acceptBoundedSnapshot === true;
-}
-
-// Keep telemetry per socket; several client types can connect simultaneously.
-function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) {
-  const url = requestUrl(request);
-  if (Option.isNone(url)) {
-    return {};
-  }
-
-  const surface = url.value.searchParams.get("clientSurface");
-  const appVersion = url.value.searchParams.get("clientAppVersion")?.trim() ?? "";
-  const deviceType = url.value.searchParams.get("clientDeviceType");
-  const os = url.value.searchParams.get("clientOs");
-  const webDeployment = url.value.searchParams.get("clientWebDeployment");
-  const browser = url.value.searchParams.get("clientBrowser")?.trim() ?? "";
-  const connectionMethod = url.value.searchParams.get("connectionMethod");
-  const rawOsMajorVersion = url.value.searchParams.get("clientOsMajorVersion") ?? "";
-  const osMajorVersion = Number(rawOsMajorVersion);
-  const deviceModel = url.value.searchParams.get("clientDeviceModel")?.trim() ?? "";
-  const isMobile = surface === "mobile";
-  const hasOsMajorVersion =
-    isMobile && rawOsMajorVersion !== "" && Number.isInteger(osMajorVersion) && osMajorVersion > 0;
-  const hasDeviceModel =
-    isMobile && deviceModel !== "" && deviceModel.length <= MAX_CLIENT_DEVICE_MODEL_LENGTH;
-
-  return {
-    ...(isClientSurface(surface) ? { surface } : {}),
-    ...(appVersion !== "" && appVersion.length <= MAX_CLIENT_APP_VERSION_LENGTH
-      ? { appVersion, clientAppVersion: appVersion }
-      : {}),
-    ...(isClientOs(os)
-      ? {
-          clientOs: os,
-          ...(isMobile && (os === "iOS" || os === "Android") ? { os } : {}),
-        }
-      : {}),
-    ...(isClientDeviceType(deviceType) ? { clientDeviceType: deviceType } : {}),
-    ...(surface === "web" && isClientWebDeployment(webDeployment) ? { webDeployment } : {}),
-    ...(surface === "web" && browser !== "" && browser.length <= MAX_CLIENT_BROWSER_LENGTH
-      ? { clientBrowser: browser }
-      : {}),
-    ...(hasOsMajorVersion ? { osMajorVersion, clientOsMajorVersion: osMajorVersion } : {}),
-    ...(hasDeviceModel ? { deviceModel, clientDeviceModel: deviceModel } : {}),
-    ...(isClientConnectionMethod(connectionMethod) ? { connectionMethod } : {}),
-  };
-}
-
-/**
- * Owners a connecting client reports: its hashed T3 Connect account and its
- * hashed device id. Only hashes are accepted, so a raw id never reaches analytics.
- */
-function readClientOwners(
-  request: HttpServerRequest.HttpServerRequest,
-): ReadonlyArray<TelemetryOwner> {
-  const url = requestUrl(request);
-  if (Option.isNone(url)) {
-    return [];
-  }
-  const params = url.value.searchParams;
-  return (
-    [
-      ["connect", params.get("clientOwner")],
-      ["device", params.get("clientDevice")],
-    ] as const
-  ).flatMap(([source, ownerId]) =>
-    ownerId !== null && isTelemetryIdHash(ownerId) ? [{ source, ownerId }] : [],
-  );
 }
 
 const enrichProjectShells = Effect.fn("ws.orchestrationV2.enrichProjectShells")(
@@ -1451,7 +1286,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 
 export const layerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
-  clientAnalyticsProps: Readonly<Record<string, unknown>>,
+  _clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
   settingsClient: { readonly secretReferences: boolean },
@@ -1480,25 +1315,6 @@ export const layerWsRpc = (
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
       const mcpSignIn = yield* McpSignIn.McpSignIn;
-      const analytics = yield* AnalyticsService.AnalyticsService;
-      const originProps = clientAnalyticsProps;
-      const recordClientCommandAnalytics = (command: OrchestrationV2Command) => {
-        const usage = commandFeatureUsage(command);
-        return Effect.all(
-          [
-            command.type === "message.dispatch"
-              ? analytics.record("client.turn.requested", originProps)
-              : Effect.void,
-            usage === undefined
-              ? Effect.void
-              : analytics.record("feature.used", {
-                  ...usage,
-                  ...(originProps.surface === undefined ? {} : { surface: originProps.surface }),
-                }),
-          ],
-          { discard: true },
-        ).pipe(Effect.ignore);
-      };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const threadViewers = yield* ThreadViewers.ThreadViewers;
@@ -1510,8 +1326,6 @@ export const layerWsRpc = (
       const toWorkflowRequestError = (error: Workflows.WorkflowError) =>
         new WorkflowRequestError({ message: error.message });
       const secretRequests = yield* SecretRequests.SecretRequests;
-      const feedbackStore = yield* FeedbackStore.FeedbackStore;
-      const guestShares = yield* GuestShareService.GuestShareService;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const issues = yield* IssueService.IssueService;
       const threadIssues = yield* ThreadIssueService.ThreadIssueService;
@@ -1614,7 +1428,6 @@ export const layerWsRpc = (
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
       const secretCheck = yield* SecretCheck.SecretCheck;
-      const otlpEndpointCheck = yield* OtlpEndpointCheck.OtlpEndpointCheck;
       const textGenerators = yield* TextGenerators.TextGenerators;
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
@@ -1629,7 +1442,6 @@ export const layerWsRpc = (
       const hostResources = yield* HostResources.HostResources;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
-      const relayClient = yield* RelayClient.RelayClient;
       // Webhook URLs start agents; expose them only to operate-scoped sessions while keeping tasks readable.
       const withVisibleWebhookUrls = (result: ScheduledTaskListResult): ScheduledTaskListResult =>
         currentSession.scopes.includes(AuthOrchestrationOperateScope)
@@ -1914,30 +1726,6 @@ export const layerWsRpc = (
           observability: {
             logsDirectoryPath: config.logsDir,
             localTracingEnabled: true,
-            ...(config.otlpTracesUrl !== undefined
-              ? {
-                  otlpTracesUrl: config.otlpTracesUrl,
-                  otlpTracesSource: config.otlpTracesSource,
-                  otlpTracesVariable: config.otlpTracesVariable,
-                }
-              : {}),
-            otlpTracesEnabled: config.otlpTracesUrl !== undefined,
-            ...(config.otlpMetricsUrl !== undefined
-              ? {
-                  otlpMetricsUrl: config.otlpMetricsUrl,
-                  otlpMetricsSource: config.otlpMetricsSource,
-                  otlpMetricsVariable: config.otlpMetricsVariable,
-                }
-              : {}),
-            otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
-            ...(config.otlpLogsUrl !== undefined
-              ? {
-                  otlpLogsUrl: config.otlpLogsUrl,
-                  otlpLogsSource: config.otlpLogsSource,
-                  otlpLogsVariable: config.otlpLogsVariable,
-                }
-              : {}),
-            otlpLogsEnabled: config.otlpLogsUrl !== undefined,
           },
           settings,
           ...(serverSettings.managedPolicy === undefined
@@ -2077,9 +1865,6 @@ export const layerWsRpc = (
                   ).pipe(Effect.provide(intakeContext)),
                 )
                 .pipe(
-                  Effect.tap((result) =>
-                    result.replayed ? Effect.void : recordClientCommandAnalytics(command),
-                  ),
                   Effect.map((result) => ({ sequence: result.sequence })),
                   Effect.mapError((cause) => {
                     if (cause._tag === "EnvironmentAuthorizationError") return cause;
@@ -2284,24 +2069,6 @@ export const layerWsRpc = (
                     ),
                 )
                 .pipe(
-                  // A resumed launch is a retry of one already counted.
-                  Effect.tap((result) =>
-                    result.resumed
-                      ? Effect.void
-                      : analytics
-                          .record("client.thread.started", {
-                            ...originProps,
-                            workspaceStrategy: input.workspaceStrategy.type,
-                          })
-                          .pipe(
-                            Effect.andThen(
-                              input.initialMessage === undefined
-                                ? Effect.void
-                                : analytics.record("client.turn.requested", originProps),
-                            ),
-                            Effect.ignore,
-                          ),
-                  ),
                   Effect.map((result) => ({
                     ...result,
                     projection: projectThreadProjectionForWire(result.projection),
@@ -2429,15 +2196,13 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.rotateWebhookToken(input)),
           ),
-        [WS_METHODS.guestShareCreate]: (input) =>
-          Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
-            Effect.andThen(guestShares.create(input)),
-          ),
+        [WS_METHODS.guestShareCreate]: () => Effect.fail(new GuestShareCreateError({ reason: "disabled" })),
         [WS_METHODS.secretsAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(secretRequests.answer(input)),
           ),
-        [WS_METHODS.agentFeedbackAnswerRequest]: (input) => feedbackStore.answer(input),
+        [WS_METHODS.agentFeedbackAnswerRequest]: () =>
+          Effect.fail(new AgentFeedbackRequestError({ reason: "feedback_off" })),
         [WS_METHODS.scheduledTasksListWebhookDeliveries]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.listWebhookDeliveries(input)),
@@ -2847,7 +2612,6 @@ export const layerWsRpc = (
         [WS_METHODS.serverGetUsageSummary]: (input) => usage.readSummary(input),
         [WS_METHODS.serverRefreshUsageRates]: (_input) => usage.refreshRates,
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
-        [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverListTextGeneratorModels]: (input) => textGenerators.listModels(input),
         [WS_METHODS.serverPrepareTriage]: (input) => triage.prepare(input),
         [WS_METHODS.serverSignalProcess]: (input) => processDiagnostics.signal(input),
@@ -2864,32 +2628,6 @@ export const layerWsRpc = (
                 input,
               ),
             ),
-          ),
-        [WS_METHODS.cloudGetRelayClientStatus]: (_input) => relayClient.resolve,
-        [WS_METHODS.cloudInstallRelayClient]: (_input) =>
-          Stream.callback<RelayClientInstallProgressEvent, RelayClientInstallFailedError>((queue) =>
-            relayClient
-              .installWithProgress((event) => Queue.offer(queue, event).pipe(Effect.asVoid))
-              .pipe(
-                Effect.flatMap((status) =>
-                  Queue.offer(queue, {
-                    type: "complete",
-                    status,
-                  }),
-                ),
-                Effect.catchTags({
-                  RelayClientInstallError: (error) =>
-                    Queue.fail(
-                      queue,
-                      new RelayClientInstallFailedError({
-                        reason: error.reason,
-                        message: error.message,
-                      }),
-                    ),
-                }),
-                Effect.andThen(Queue.end(queue)),
-                Effect.forkScoped,
-              ),
           ),
         [WS_METHODS.pullRequestsList]: (input) => pullRequests.list(input),
         [WS_METHODS.pullRequestsListStats]: (input) => pullRequests.listStats(input),
@@ -3791,7 +3529,6 @@ export const layer = Layer.unwrap(
         }
         const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
         const sessions = yield* SessionStore.SessionStore;
-        const analytics = yield* AnalyticsService.AnalyticsService;
         const session = yield* serverAuth.authenticateWebSocketUpgrade(request, "rpc").pipe(
           Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
             failEnvironmentAuthInvalid(
@@ -3809,8 +3546,6 @@ export const layer = Layer.unwrap(
             "sec-websocket-extensions"
           ];
         }
-        const clientAnalyticsProps = readClientAnalyticsProps(request);
-        yield* analytics.recordOwners(readClientOwners(request), "client");
         const reportProfiles = yield* serverBrowser.profileReporter;
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
@@ -3818,21 +3553,7 @@ export const layer = Layer.unwrap(
             Effect.provideService(RpcServer.Protocol, withOutputWindow(protocol)),
             Effect.provide(
               Layer.merge(
-                RpcAuthorization.layer(session.scopes, (method, payload) => {
-                  // Anonymous product signal: the feature and its enum variant,
-                  // credited to the connecting client's surface only.
-                  const usage = featureUsage(method, payload);
-                  return usage === undefined
-                    ? Effect.void
-                    : analytics
-                        .record("feature.used", {
-                          ...usage,
-                          ...(clientAnalyticsProps.surface === undefined
-                            ? {}
-                            : { surface: clientAnalyticsProps.surface }),
-                        })
-                        .pipe(Effect.ignore);
-                }),
+                RpcAuthorization.layer(session.scopes),
                 rpcInstrumentationLayer,
               ),
             ),
@@ -3843,7 +3564,7 @@ export const layer = Layer.unwrap(
           Effect.provide(
             layerWsRpc(
               session,
-              clientAnalyticsProps,
+              {},
               serverBrowser,
               reportProfiles,
               readSettingsClient(url.value),
@@ -3869,7 +3590,6 @@ export const layer = Layer.unwrap(
               Layer.provide(
                 Layer.succeed(IssueTrackerConnections.IssueTrackerConnections, issueTrackers),
               ),
-              Layer.provide(OtlpEndpointCheck.layer),
               Layer.provide(
                 Layer.succeed(
                   PullRequestReviewGuideService.PullRequestReviewGuideService,

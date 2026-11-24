@@ -1,11 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId } from "@t3tools/contracts";
-import { it as effectIt } from "@effect/vitest";
 import type * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
-import * as Fiber from "effect/Fiber";
-import * as Ref from "effect/Ref";
 import * as Layer from "effect/Layer";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -104,19 +100,6 @@ const virtualInterface = (address: string, mac = "02:42:ac:11:00:01") => [
 ];
 
 describe("resolveBoundEndpoints", () => {
-  it("lists every external IPv4 address for a wildcard bind, tagging the tailnet one", () => {
-    expect(
-      resolveBoundEndpoints({
-        platform: "linux",
-        host: "0.0.0.0",
-        port: 3773,
-        interfaces: INTERFACES,
-      }),
-    ).toEqual([
-      { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
-    ]);
-  });
 
   it("skips container and VM networks, which only this machine reaches", () => {
     const interfaces = {
@@ -198,23 +181,6 @@ describe("resolveBoundEndpoints", () => {
     }
   });
 
-  it("tags only addresses on Tailscale's interface as tailnet, not other VPNs in its range", () => {
-    const interfaces = {
-      en0: INTERFACES.en0,
-      tailscale0: vpnInterface("100.70.1.2"),
-      CloudflareWARP: vpnInterface("100.96.0.1"),
-      utun7: vpnInterface("100.85.0.1"),
-    };
-    expect(
-      resolveBoundEndpoints({ platform: "linux", host: "0.0.0.0", port: 3773, interfaces }),
-    ).toEqual([
-      { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.70.1.2:3773/" },
-      { kind: "lan", httpBaseUrl: "http://100.96.0.1:3773/" },
-      { kind: "lan", httpBaseUrl: "http://100.85.0.1:3773/" },
-    ]);
-  });
-
   it("never reports a host name, which can resolve to another machine per client", () => {
     for (const host of ["server.local", "devbox", "devbox.home.arpa"]) {
       expect(
@@ -232,29 +198,6 @@ describe("resolveBoundEndpoints", () => {
         interfaces: INTERFACES,
       }),
     ).toEqual([]);
-  });
-
-  it("reports only the tailnet address on a cloud VM, whose private network no client shares", () => {
-    expect(
-      resolveBoundEndpoints({
-        platform: "linux",
-        host: "0.0.0.0",
-        port: 3773,
-        interfaces: INTERFACES,
-        onCloudVm: true,
-      }),
-    ).toEqual([{ kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" }]);
-  });
-
-  it("reports an explicit bind to Tailscale's IPv6 address as the tailnet route", () => {
-    expect(
-      resolveBoundEndpoints({
-        platform: "linux",
-        host: "fd7a:115c:a1e0::1",
-        port: 3773,
-        interfaces: INTERFACES,
-      }),
-    ).toEqual([{ kind: "tailnet", httpBaseUrl: "http://[fd7a:115c:a1e0::1]:3773/" }]);
   });
 
   it("never reports an IPv4-mapped host, which can name the client's own loopback", () => {
@@ -345,74 +288,3 @@ const resolveWithServe = (probeStatus: number) =>
       ),
     ),
   );
-
-describe("DirectEndpoints Tailscale Serve", () => {
-  effectIt.effect("lists the tailnet name once Serve answers for this server", () =>
-    Effect.gen(function* () {
-      expect(yield* resolveWithServe(200)).toEqual([
-        { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-      ]);
-    }),
-  );
-
-  effectIt.effect(
-    "returns bound endpoints during validation and reuses only a completed Serve result",
-    () =>
-      Effect.gen(function* () {
-        const status = yield* Ref.make(200);
-        const finishProbe = yield* Deferred.make<void>();
-        const probeStarted = yield* Deferred.make<void>();
-        const revalidationStarted = yield* Deferred.make<void>();
-        const finishRevalidation = yield* Deferred.make<void>();
-        const service = yield* DirectEndpoints.make.pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              layerServeConfig("192.168.1.10"),
-              layerTailscaleUp,
-              Layer.succeed(
-                HttpClient.HttpClient,
-                HttpClient.make((request) =>
-                  Deferred.succeed(probeStarted, undefined).pipe(
-                    Effect.andThen(Deferred.await(finishProbe)),
-                    Effect.andThen(Ref.get(status)),
-                    Effect.tap((status) =>
-                      status === 502
-                        ? Deferred.succeed(revalidationStarted, undefined).pipe(
-                            Effect.andThen(Deferred.await(finishRevalidation)),
-                          )
-                        : Effect.void,
-                    ),
-                    Effect.map((status) => serveProbeResponse(request, status)),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-        const resolving = yield* Effect.forkScoped(service.resolve());
-        yield* Deferred.await(probeStarted);
-        const bound = { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" };
-        expect(yield* service.resolveAvailable()).toEqual([bound]);
-        yield* Deferred.succeed(finishProbe, undefined);
-        const validated = yield* Fiber.join(resolving);
-        expect(validated).toEqual([
-          bound,
-          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-        ]);
-        expect(yield* service.resolveAvailable()).toEqual(validated);
-        yield* Ref.set(status, 502);
-        const revalidating = yield* Effect.forkScoped(service.resolve());
-        yield* Deferred.await(revalidationStarted);
-        expect(yield* service.resolveAvailable()).toEqual(validated);
-        yield* Deferred.succeed(finishRevalidation, undefined);
-        expect(yield* Fiber.join(revalidating)).toEqual([bound]);
-        expect(yield* service.resolveAvailable()).toEqual([bound]);
-      }),
-  );
-
-  effectIt.effect("leaves the tailnet name out when Serve is not forwarding", () =>
-    Effect.gen(function* () {
-      expect(yield* resolveWithServe(502)).toEqual([]);
-    }),
-  );
-});

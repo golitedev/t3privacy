@@ -63,6 +63,32 @@ const isPrivateIpv4Address = (parts: readonly number[]): boolean =>
   (parts[0] === 169 && parts[1] === 254) ||
   (parts[0] === 198 && parts[1]! >= 18 && parts[1]! <= 19);
 
+export const isLanAddress = (host: string): boolean => {
+  const normalized = normalizeHostname(host);
+  const ipv4 = parseIpv4Address(normalized) ?? parseIpv4MappedIpv6Address(normalized);
+  if (ipv4) {
+    return ipv4[0] === 10 || ipv4[0] === 127 ||
+      (ipv4[0] === 172 && ipv4[1]! >= 16 && ipv4[1]! <= 31) ||
+      (ipv4[0] === 192 && ipv4[1] === 168);
+  }
+  const ipv6 = parseIpv6Address(normalized);
+  return ipv6 !== null && (normalized === "::1" ||
+    ((ipv6[0]! & 0xfe00) === 0xfc00 && !isTailnetHost(normalized)));
+};
+
+export function isLanEnvironmentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      ["http:", "https:", "ws:", "wss:"].includes(url.protocol) &&
+      !url.username && !url.password &&
+      (url.hostname === "localhost" || isLanAddress(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
 const isSpecialPurposeIpv4Address = (parts: readonly number[]): boolean =>
   isPrivateIpv4Address(parts) ||
   parts[0]! >= 224 ||

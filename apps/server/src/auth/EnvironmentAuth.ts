@@ -842,6 +842,10 @@ export const make = Effect.gen(function* () {
       ),
       mapSessionVerificationErrors,
       Effect.flatMap(rejectMcpClientAudience),
+      Effect.filterOrFail(
+        (session) => session.subject !== CLOUD_CONNECT_SUBJECT,
+        () => new ServerAuthInvalidCredentialError({}),
+      ),
       Effect.map((session) => ({
         sessionId: session.sessionId,
         subject: session.subject,
@@ -1826,8 +1830,7 @@ const revokePairedClientsThePolicyDisallows = Effect.fn(
   const remoteAllowed = ManagedLimits.allowsRemoteClients(policy);
   const disallowed = new Set<string>();
   if (!remoteAllowed) disallowed.add(LINK_PAIRED_SUBJECTS.link);
-  if (!ManagedLimits.allowsConnect(policy)) disallowed.add(LINK_PAIRED_SUBJECTS.connect);
-  if (disallowed.size === 0) return;
+  disallowed.add(LINK_PAIRED_SUBJECTS.connect);
   const sessions = (yield* stores.sessions.listActive()).filter(
     (session) =>
       disallowed.has(session.subject) ||

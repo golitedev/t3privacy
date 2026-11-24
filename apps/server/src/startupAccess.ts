@@ -1,12 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off - The private-network gate guards the node:http server.
 import type * as NodeHttp from "node:http";
-import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 
 import {
   formatHostForUrl,
-  isPrivateNetworkHost,
-  isSharedAddressSpaceHost,
+  isLanAddress,
   isWildcardHost,
 } from "@t3tools/shared/hostClassification";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -64,18 +62,11 @@ const LINUX_CONTAINER_INTERFACE = /^(ve-|vb-|vz-)/;
 export const isVirtualInterface = (name: string, platform: NodeJS.Platform): boolean =>
   VIRTUAL_INTERFACE.test(name) || (platform === "linux" && LINUX_CONTAINER_INTERFACE.test(name));
 
-/**
- * Loopback or private-range IPv4 (LAN, tailnet, CGNAT), not link-local, in
- * plain or IPv4-mapped IPv6 form.
- */
-export const isPrivateNetworkAddress = (address: string): boolean => {
-  const ipv4 = address.replace(/^::ffff:/i, "");
-  return NodeNet.isIPv4(ipv4) && !ipv4.startsWith("169.254.") && isPrivateNetworkHost(ipv4);
-};
+export const isPrivateNetworkAddress = isLanAddress;
 
 /**
  * A private-network listener binds every interface but serves only
- * connections that stay on loopback, a LAN, or the tailnet. Both ends must be
+ * connections from loopback or a LAN address. Both ends must be
  * private: a cloud VM or a router port forward hands public clients to a
  * private local address.
  */
@@ -161,21 +152,16 @@ const resolveHeadlessConnectionHost = (
   }
 
   const interfaceEntries = Object.entries(interfaces).flatMap(([name, entries]) =>
-    privateNetworkOnly && isVirtualInterface(name, platform) ? [] : (entries ?? []),
+    isVirtualInterface(name, platform) ? [] : (entries ?? []),
   );
   const externalIpv4Entries = interfaceEntries.filter(
     (entry) =>
       !entry.internal &&
       isIpv4Family(entry.family) &&
-      (!privateNetworkOnly ||
-        (isPrivateNetworkAddress(entry.address) &&
-          !(platform === "win32" && WINDOWS_HOST_ADAPTER_MAC.test(entry.mac)))),
+      isPrivateNetworkAddress(entry.address) &&
+      !(platform === "win32" && WINDOWS_HOST_ADAPTER_MAC.test(entry.mac)),
   );
-  // A tailnet or other CGNAT address reaches fewer devices than the LAN one.
-  const externalIpv4 = privateNetworkOnly
-    ? (externalIpv4Entries.find((entry) => !isSharedAddressSpaceHost(entry.address)) ??
-      externalIpv4Entries[0])
-    : externalIpv4Entries[0];
+  const externalIpv4 = externalIpv4Entries[0];
   if (externalIpv4) {
     return externalIpv4.address;
   }
@@ -184,7 +170,7 @@ const resolveHeadlessConnectionHost = (
   }
 
   const externalIpv6 = interfaceEntries.find(
-    (entry) => !entry.internal && isIpv6Family(entry.family),
+    (entry) => !entry.internal && isIpv6Family(entry.family) && isLanAddress(entry.address),
   );
   return externalIpv6 ? normalizeHost(externalIpv6.address) : loopbackAddressFor(host);
 };

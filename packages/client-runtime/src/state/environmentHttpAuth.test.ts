@@ -31,7 +31,7 @@ import {
   type PreparedConnection,
   type PreparedHttpAuthorization,
 } from "../connection/model.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
+import * as Dpop from "../relay/dpopSigner.ts";
 import { type RemoteEnvironmentRequestError } from "../rpc/http.ts";
 import * as RpcHttp from "../rpc/http.ts";
 import * as PullRequestDiffLoader from "./pullRequestDiffHttp.ts";
@@ -129,7 +129,7 @@ function makeHarness(reply: (requestNumber: number) => Response | Promise<Respon
       RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]["authorizeDpopHttp"]
     >[0]
   > = [];
-  const proofs: Array<ManagedRelay.ManagedRelayDpopProofInput> = [];
+  const proofs: Array<ManagedRelay.DpopProofInput> = [];
   const remoteAuthorization = RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.of({
     authorizeBearer: () => Effect.die("Unexpected bearer connection preparation."),
     authorizeDpop: () => Effect.die("HTTP requests must not prepare a WebSocket connection."),
@@ -153,7 +153,7 @@ function makeHarness(reply: (requestNumber: number) => Response | Promise<Respon
     rememberCheckedDescriptor: () => Effect.void,
     renewDpopBeforeExpiry: () => Effect.die("HTTP requests must not renew a socket's token."),
   });
-  const signer = ManagedRelay.ManagedRelayDpopSigner.of({
+  const signer = Dpop.DpopSigner.of({
     thumbprint: Effect.succeed("test-thumbprint"),
     createProof: (input) =>
       Effect.sync(() => {
@@ -415,7 +415,7 @@ describe("authenticated environment HTTP requests", () => {
           Layer.mergeAll(
             harness.httpLayer,
             Layer.succeed(
-              ManagedRelay.ManagedRelayDpopSigner,
+              Dpop.DpopSigner,
               Option.getOrThrow(harness.input.signer),
             ),
             Layer.succeed(

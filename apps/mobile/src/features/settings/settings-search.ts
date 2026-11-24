@@ -22,12 +22,6 @@ const SETTINGS_SEARCH_TERMS = {
     msg("remote", { $context: "settings search keyword" }),
     "tailscale",
   ],
-  SettingsNotifications: [
-    msg("push", { $context: "settings search keyword" }),
-    msg("alerts", { $context: "settings search keyword" }),
-    msg("live activity", { $context: "settings search keyword" }),
-    msg("agent activity", { $context: "settings search keyword" }),
-  ],
   SettingsAppearance: [
     msg("theme", { $context: "settings search keyword" }),
     msg("dark mode", { $context: "settings search keyword" }),

@@ -1,11 +1,5 @@
 import * as NetService from "@t3tools/shared/Net";
-import {
-  OtlpHeadersFromString,
-  OtlpProtocol,
-  type SignalExport,
-} from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
-import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@t3tools/contracts";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
@@ -40,7 +34,7 @@ const portFlag = Flag.Int("port").pipe(
   Flag.optional,
 );
 const hostFlag = Flag.String("host").pipe(
-  Flag.withDescription("Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a Tailnet IP)."),
+  Flag.withDescription("Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a private LAN address)."),
   Flag.optional,
 );
 export const baseDirFlag = Flag.String("base-dir").pipe(
@@ -76,20 +70,9 @@ const logWebSocketEventsFlag = Flag.Boolean("log-websocket-events").pipe(
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
-const tailscaleServeFlag = Flag.Boolean("tailscale-serve").pipe(
-  Flag.withDescription(
-    "Configure Tailscale Serve to expose this backend over HTTPS on the Tailnet.",
-  ),
-  Flag.optional,
-);
-const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
-  Flag.withSchema(PortSchema),
-  Flag.withDescription("HTTPS port for Tailscale Serve when --tailscale-serve is enabled."),
-  Flag.optional,
-);
 const lanFlag = Flag.Boolean("lan").pipe(
   Flag.withDescription(
-    "Accept connections from your local network and tailnet, not only this machine (equivalent to T3CODE_LAN).",
+    "Accept connections from your local network (equivalent to T3CODE_LAN).",
   ),
   Flag.optional,
 );
@@ -110,28 +93,6 @@ const EnvServerConfig = Config.all({
   traceMaxBytes: Config.Int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
   traceMaxFiles: traceMaxFilesConfig,
   traceBatchWindowMs: Config.Int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(1_000)),
-  otlpTracesUrl: Config.String("T3CODE_OTLP_TRACES_URL").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  otlpMetricsUrl: Config.String("T3CODE_OTLP_METRICS_URL").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  otlpLogsUrl: Config.String("T3CODE_OTLP_LOGS_URL").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  otlpExportIntervalMs: Config.Int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
-    Config.withDefault(10_000),
-  ),
-  otlpHeaders: Config.schema(OtlpHeadersFromString, "T3CODE_OTLP_HEADERS").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  otlpProtocol: Config.schema(OtlpProtocol, "T3CODE_OTLP_PROTOCOL").pipe(
-    Config.withDefault("http/json"),
-  ),
   mode: Config.schema(ServerConfig.RuntimeMode, "T3CODE_MODE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -162,14 +123,6 @@ const EnvServerConfig = Config.all({
     Config.map(Option.getOrUndefined),
   ),
   logWebSocketEvents: Config.Boolean("T3CODE_LOG_WS_EVENTS").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  tailscaleServeEnabled: Config.Boolean("T3CODE_TAILSCALE_SERVE").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  tailscaleServePort: Config.Port("T3CODE_TAILSCALE_SERVE_PORT").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -207,8 +160,6 @@ export interface CliServerFlags {
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
-  readonly tailscaleServeEnabled: Option.Option<boolean>;
-  readonly tailscaleServePort: Option.Option<number>;
   readonly lan: Option.Option<boolean>;
 }
 
@@ -242,25 +193,12 @@ export const sharedServerCommandFlags = {
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
-  tailscaleServeEnabled: tailscaleServeFlag,
-  tailscaleServePort: tailscaleServePortFlag,
   lan: lanFlag,
 } as const;
 
 const resolveOptionPrecedence = <Value>(
   ...values: ReadonlyArray<Option.Option<Value>>
 ): Option.Option<Value> => Option.firstSomeOf(values);
-
-const loadPersistedObservabilitySettings = Effect.fn(function* (settingsPath: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const exists = yield* fs.exists(settingsPath).pipe(Effect.orElseSucceed(() => false));
-  if (!exists) {
-    return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined, otlpLogsUrl: undefined };
-  }
-
-  const raw = yield* fs.readFileString(settingsPath).pipe(Effect.orElseSucceed(() => ""));
-  return parsePersistedServerObservabilitySettings(raw);
-});
 
 export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(function* (
   flags: CliServerFlags,
@@ -291,8 +229,6 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     bootstrapFd: flags.bootstrapFd ?? Option.none(),
     autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
     logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
-    tailscaleServeEnabled: flags.tailscaleServeEnabled ?? Option.none(),
-    tailscaleServePort: flags.tailscaleServePort ?? Option.none(),
     lan: flags.lan ?? Option.none(),
   } satisfies CliServerFlags;
   const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
@@ -357,9 +293,6 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   }
   yield* fs.makeDirectory(cwd, { recursive: true });
   yield* ServerConfig.ensureServerDirectories(derivedPaths);
-  const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
-    derivedPaths.settingsPath,
-  );
   const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
   yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
   const startupPresentation = options?.startupPresentation ?? "browser";
@@ -399,30 +332,13 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     ),
     () => Boolean(devUrl),
   );
-  const tailscaleServeEnabled = Option.getOrElse(
-    resolveOptionPrecedence(
-      normalizedFlags.tailscaleServeEnabled,
-      Option.fromUndefinedOr(env.tailscaleServeEnabled),
-      Option.fromUndefinedOr(bootstrap?.tailscaleServeEnabled),
-    ),
-    () => false,
-  );
-  const tailscaleServePort = Option.getOrElse(
-    resolveOptionPrecedence(
-      normalizedFlags.tailscaleServePort,
-      Option.fromUndefinedOr(env.tailscaleServePort),
-      Option.fromUndefinedOr(bootstrap?.tailscaleServePort),
-    ),
-    () => 443,
-  );
   const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
   const explicitHost = resolveOptionPrecedence(
     normalizedFlags.host,
     Option.fromUndefinedOr(env.host),
     Option.fromUndefinedOr(bootstrap?.host),
   );
-  // Private networks only, so clients learn a LAN address and prefer it over
-  // T3 Connect. `t3 service install` writes T3CODE_LAN=false for a new
+  // `t3 service install` writes T3CODE_LAN=false for a new
   // service; one installed before T3CODE_LAN existed keeps listening.
   const lan = resolveOptionPrecedence(normalizedFlags.lan, Option.fromUndefinedOr(env.lan));
   const privateNetworkOnly =
@@ -455,41 +371,6 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   );
   const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
-  const otel = yield* OtelEnvironment.load;
-
-  const signalExport: SignalExport = {
-    protocol: env.otlpProtocol,
-    headers: env.otlpHeaders,
-    exportIntervalMs: env.otlpExportIntervalMs,
-  };
-  const traces = OtelEnvironment.resolveSignalEndpoint(
-    otel,
-    "traces",
-    { url: env.otlpTracesUrl, export: signalExport },
-    {
-      bootstrapUrl: bootstrap?.otlpTracesUrl,
-      settingsUrl: persistedObservabilitySettings.otlpTracesUrl,
-    },
-  );
-  const metrics = OtelEnvironment.resolveSignalEndpoint(
-    otel,
-    "metrics",
-    { url: env.otlpMetricsUrl, export: signalExport },
-    {
-      bootstrapUrl: bootstrap?.otlpMetricsUrl,
-      settingsUrl: persistedObservabilitySettings.otlpMetricsUrl,
-    },
-  );
-  const logs = OtelEnvironment.resolveSignalEndpoint(
-    otel,
-    "logs",
-    { url: env.otlpLogsUrl, export: signalExport },
-    {
-      bootstrapUrl: bootstrap?.otlpLogsUrl,
-      settingsUrl: persistedObservabilitySettings.otlpLogsUrl,
-    },
-  );
-
   const config: ServerConfig.ServerConfig["Service"] = {
     logLevel,
     traceMinLevel: env.traceMinLevel,
@@ -497,19 +378,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     traceBatchWindowMs: env.traceBatchWindowMs,
     traceMaxBytes: env.traceMaxBytes,
     traceMaxFiles: env.traceMaxFiles,
-    otlpTracesUrl: traces?.url,
-    otlpMetricsUrl: metrics?.url,
-    otlpLogsUrl: logs?.url,
-    otlpTracesExport: traces?.export ?? signalExport,
-    otlpMetricsExport: metrics?.export ?? signalExport,
-    otlpLogsExport: logs?.export ?? signalExport,
-    ...(traces !== undefined ? { otlpTracesSource: traces.source } : {}),
-    ...(traces?.variable !== undefined ? { otlpTracesVariable: traces.variable } : {}),
-    ...(metrics !== undefined ? { otlpMetricsSource: metrics.source } : {}),
-    ...(metrics?.variable !== undefined ? { otlpMetricsVariable: metrics.variable } : {}),
-    ...(logs !== undefined ? { otlpLogsSource: logs.source } : {}),
-    ...(logs?.variable !== undefined ? { otlpLogsVariable: logs.variable } : {}),
-    otelEnvironment: otel,
+    otelEnvironment: OtelEnvironment.none,
     mode,
     port,
     cwd,
@@ -536,8 +405,8 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     resourceMonitorPath,
     autoBootstrapProjectFromCwd,
     logWebSocketEvents,
-    tailscaleServeEnabled,
-    tailscaleServePort,
+    tailscaleServeEnabled: false,
+    tailscaleServePort: 443,
   };
 
   return config;
@@ -560,8 +429,6 @@ export const resolveCliAuthConfig = (
       bootstrapFd: Option.none(),
       autoBootstrapProjectFromCwd: Option.none(),
       logWebSocketEvents: Option.none(),
-      tailscaleServeEnabled: Option.none(),
-      tailscaleServePort: Option.none(),
       lan: Option.none(),
     },
     cliLogLevel,

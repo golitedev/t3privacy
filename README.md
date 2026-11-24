@@ -29,6 +29,12 @@ It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kir
 
 ## What you get
 
+This fork removes upstream product telemetry and hosted connectivity. Build from this
+checkout to use the fork's server, web, desktop, and mobile apps. Other devices pair
+directly over the local network. See [LAN access](docs/user/remote-access.md) and
+[privacy and diagnostics](docs/user/telemetry.md).
+
+
 - **Your subscriptions.** T3 Code does not resell tokens. It drives the agents you are already signed in to.
 - **Every agent in one place.** Change models in the middle of a thread. Let Claude hand a task to Codex.
 - **Desktop, web, and phone.** One server, and every client shows the same threads. There are apps for iOS and Android.

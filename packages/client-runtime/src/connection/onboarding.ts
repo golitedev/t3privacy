@@ -1,6 +1,8 @@
+import { connectionRoutes, routeEntry } from "./routes.ts";
 import { msg } from "gt-i18n";
 import { detailFromError, translatableDetail } from "../errors/translatable.ts";
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
+import { isLanEnvironmentUrl } from "@t3tools/shared/hostClassification";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -22,7 +24,7 @@ import {
 } from "../environment/endpoint.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
+import * as Dpop from "../relay/dpopSigner.ts";
 import {
   BearerConnectionCredential,
   BearerConnectionProfile,
@@ -30,21 +32,17 @@ import {
   type ConnectionCatalogEntry,
   type ConnectionCredential,
   DpopConnectionCredential,
-  SshConnectionProfile,
-  SshConnectionRegistration,
 } from "./catalog.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import { mapRemoteEnvironmentError } from "./errors.ts";
 import {
   BearerConnectionTarget,
   ConnectionBlockedError,
-  SshConnectionTarget,
   type ConnectionAttemptError,
 } from "./model.ts";
 import * as Persistence from "../platform/persistence.ts";
 import * as EnvironmentRegistry from "./registry.ts";
 import { orchestrationProtocolCompatibilityError } from "./compatibility.ts";
-import { connectionRoutes, routeEntry, sshTargetKey } from "./routes.ts";
 
 export interface PairingConnectionInput {
   readonly pairingUrl?: string;
@@ -110,6 +108,13 @@ function bearerConnectionId(environmentId: EnvironmentId, httpBaseUrl: string): 
   return `bearer:${environmentId}:${new URL(httpBaseUrl).origin}`;
 }
 
+export function lanAddressRequired() {
+  return new ConnectionBlockedError({
+    reason: "configuration",
+    ...translatableDetail(msg("Use a private LAN address to connect to this environment.")),
+  });
+}
+
 function differentMachineError(label: string) {
   return new ConnectionBlockedError({
     reason: "configuration",
@@ -126,6 +131,7 @@ export const preparePairingRegistration = Effect.fn(
   "clientRuntime.connection.onboarding.preparePairingRegistration",
 )(function* (input: PairingConnectionInput) {
   const target = yield* resolvePairingTarget(input);
+  if (!isLanEnvironmentUrl(target.httpBaseUrl)) return yield* lanAddressRequired();
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const descriptor = yield* fetchRemoteEnvironmentDescriptor({
     httpBaseUrl: target.httpBaseUrl,
@@ -164,7 +170,7 @@ export const preparePairingRegistration = Effect.fn(
   }
   // A key-bound session renews itself, but only on a host that can renew it. The proof is made
   // before the one-time code is sent, so a device that cannot sign keeps the code for bearer.
-  const signer = yield* Effect.serviceOption(ManagedRelay.ManagedRelayDpopSigner);
+  const signer = yield* Effect.serviceOption(Dpop.DpopSigner);
   const dpopProof =
     descriptor.capabilities.accessTokenRenewal === true && Option.isSome(signer)
       ? yield* signer.value
@@ -231,6 +237,7 @@ const reachesEnvironment = Effect.fn("clientRuntime.connection.onboarding.reache
           ...translatableDetail(msg("The environment URL is invalid.")),
         }),
     });
+    if (!isLanEnvironmentUrl(httpBaseUrl)) return false;
     const descriptor = yield* fetchRemoteEnvironmentDescriptor({
       httpBaseUrl,
       timeoutMs: REACHABILITY_TIMEOUT_MS,
@@ -313,6 +320,7 @@ export const prepareBearerConnectionUpdate = Effect.fn(
           : translatableDetail(msg("The environment URL is invalid."))),
       }),
   });
+  if (!isLanEnvironmentUrl(httpBaseUrl)) return yield* lanAddressRequired();
   const connectionId = entry.target.connectionId;
   return new BearerConnectionRegistration({
     target: new BearerConnectionTarget({
@@ -331,53 +339,13 @@ export const prepareBearerConnectionUpdate = Effect.fn(
   });
 });
 
-export const prepareSshRegistration = Effect.fn(
-  "clientRuntime.connection.onboarding.prepareSshRegistration",
-)(function* (input: SshConnectionInput) {
-  const gateway = yield* ClientCapabilities.SshEnvironmentGateway;
-  const provisioned = yield* gateway.provision(input.target, input.expectedEnvironmentId);
-  const connectionId = `ssh:${provisioned.environmentId}:${sshTargetKey(provisioned.bootstrap.target)}`;
-  const label = input.label?.trim() || provisioned.label || provisioned.bootstrap.target.alias;
-
-  return new SshConnectionRegistration({
-    target: new SshConnectionTarget({
-      environmentId: provisioned.environmentId,
-      label,
-      connectionId,
-    }),
-    profile: new SshConnectionProfile({
-      connectionId,
-      environmentId: provisioned.environmentId,
-      label,
-      target: provisioned.bootstrap.target,
-    }),
-    credential: new BearerConnectionCredential({ token: provisioned.bearerToken }),
-  });
-});
-
-const registerSshConnection = Effect.fn(
-  "clientRuntime.connection.onboarding.registerSshConnection",
-)(function* (input: SshConnectionInput) {
-  const registration = yield* prepareSshRegistration(input);
-  if (
-    input.expectedEnvironmentId !== undefined &&
-    registration.target.environmentId !== input.expectedEnvironmentId
-  ) {
-    return yield* differentMachineError(registration.target.label);
-  }
-  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-  yield* registry.register(registration, {
-    knownAddressOnly: input.expectedEnvironmentId === undefined,
-  });
-  return registration.target.environmentId;
-});
+const registerSshConnection = () => Effect.fail(lanAddressRequired());
 
 /** @public */
 export const make = Effect.gen(function* () {
   const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const httpClient = yield* HttpClient.HttpClient;
-  const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
   const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
 
   // Provisioning retains the delegated onboarding operation spans.
@@ -390,13 +358,7 @@ export const make = Effect.gen(function* () {
       Effect.provideService(ClientCapabilities.ClientPresentation, presentation),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     ),
-    registerSsh: Effect.fnUntraced(
-      function* (input) {
-        return yield* registerSshConnection(input);
-      },
-      Effect.provideService(EnvironmentRegistry.EnvironmentRegistry, registry),
-      Effect.provideService(ClientCapabilities.SshEnvironmentGateway, ssh),
-    ),
+    registerSsh: registerSshConnection,
     updateBearer: Effect.fnUntraced(
       function* (input) {
         return yield* updateBearerConnection(input);

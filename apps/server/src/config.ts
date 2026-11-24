@@ -8,14 +8,11 @@ import * as Path from "effect/Path";
 import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
-import type { OtlpEndpointSource } from "@t3tools/contracts";
 import { sweepStalePendingAttachments } from "./attachmentStore.ts";
 import { markNoCopyOnWrite } from "./noCopyOnWrite.ts";
 import {
-  DEFAULT_SIGNAL_EXPORT,
   nodeProcessRuntimeAttributes,
   processServiceInstanceId,
-  type SignalExport,
 } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { type ReleaseChannel, releaseResourceAttributes } from "@t3tools/shared/releaseResource";
@@ -72,18 +69,6 @@ export class ServerConfig extends Context.Service<
     readonly traceBatchWindowMs: number;
     readonly traceMaxBytes: number;
     readonly traceMaxFiles: number;
-    readonly otlpTracesUrl: string | undefined;
-    readonly otlpMetricsUrl: string | undefined;
-    readonly otlpLogsUrl: string | undefined;
-    readonly otlpTracesExport: SignalExport;
-    readonly otlpMetricsExport: SignalExport;
-    readonly otlpLogsExport: SignalExport;
-    readonly otlpTracesSource?: OtlpEndpointSource;
-    readonly otlpTracesVariable?: string;
-    readonly otlpMetricsSource?: OtlpEndpointSource;
-    readonly otlpMetricsVariable?: string;
-    readonly otlpLogsSource?: OtlpEndpointSource;
-    readonly otlpLogsVariable?: string;
     readonly otelEnvironment: OtelEnvironment.OtelEnvironment;
     readonly mode: RuntimeMode;
     readonly port: number;
@@ -245,12 +230,6 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     traceBatchWindowMs: 200,
     traceMaxBytes: 10 * 1024 * 1024,
     traceMaxFiles: 10,
-    otlpTracesUrl: undefined,
-    otlpMetricsUrl: undefined,
-    otlpLogsUrl: undefined,
-    otlpTracesExport: DEFAULT_SIGNAL_EXPORT,
-    otlpMetricsExport: DEFAULT_SIGNAL_EXPORT,
-    otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
     otelEnvironment: OtelEnvironment.none,
     cwd,
     baseDir,

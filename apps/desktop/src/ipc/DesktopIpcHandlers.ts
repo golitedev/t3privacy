@@ -20,7 +20,6 @@ import {
   getAdvertisedEndpoints,
   getServerExposureState,
   setServerExposureMode,
-  setTailscaleServeEnabled,
 } from "./methods/serverExposure.ts";
 import {
   bootstrapSshBearerSession,
@@ -43,7 +42,6 @@ import {
   getAppBranding,
   getLocalEnvironmentBootstraps,
   getLocalEnvironmentBearerToken,
-  installRelayTelemetryEnabled,
   getSystemLocale,
   getPreferredSystemLanguages,
   getPrimaryPasteEnabled,
@@ -105,7 +103,6 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handleSync(takeLegacyLocalStorage);
   yield* ipc.handle(completeLegacyLocalStorage);
   yield* ipc.handleSync(getAppBranding);
-  yield* installRelayTelemetryEnabled();
   yield* ipc.handleSync(getSystemLocale);
   yield* ipc.handleSync(getPreferredSystemLanguages);
   yield* ipc.handleSync(getPrimaryPasteEnabled);
@@ -146,7 +143,6 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
 
   yield* ipc.handle(getServerExposureState);
   yield* ipc.handle(setServerExposureMode);
-  yield* ipc.handle(setTailscaleServeEnabled);
   yield* ipc.handle(getAdvertisedEndpoints);
 
   yield* ipc.handle(getWslState);

@@ -88,15 +88,6 @@ import {
   PullRequestOperationError,
   PullRequestUnavailableError,
 } from "./pullRequest.ts";
-import {
-  RelayCloudEnvironmentHealthRequest,
-  RelayCloudMintCredentialRequest,
-  RelayEnvironmentConfigRequest,
-  RelayEnvironmentHealthResponse,
-  RelayEnvironmentLinkProof,
-  RelayEnvironmentMintResponse,
-  RelayLinkProofRequest,
-} from "./relay.ts";
 
 const OptionalBearerHeaders = Schema.Struct({
   authorization: Schema.optionalKey(Schema.String),
@@ -993,75 +984,6 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
-class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
-  .add(
-    HttpApiEndpoint.post("linkProof", "/api/connect/link-proof", {
-      headers: OptionalBearerHeaders,
-      payload: RelayLinkProofRequest,
-      success: RelayEnvironmentLinkProof,
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("relayConfig", "/api/connect/relay-config", {
-      headers: OptionalBearerHeaders,
-      payload: RelayEnvironmentConfigRequest,
-      success: EnvironmentCloudRelayConfigResult,
-      error: [...EnvironmentHttpCloudErrors, EnvironmentCloudEndpointUnavailableError],
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.get("linkState", "/api/connect/link-state", {
-      headers: OptionalBearerHeaders,
-      success: EnvironmentCloudLinkStateResult,
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("checkReachability", "/api/connect/reachability", {
-      headers: OptionalBearerHeaders,
-      success: EnvironmentConnectReachability,
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("unlink", "/api/connect/unlink", {
-      headers: OptionalBearerHeaders,
-      success: EnvironmentCloudRelayConfigResult,
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("preferences", "/api/connect/preferences", {
-      headers: OptionalBearerHeaders,
-      payload: EnvironmentCloudPreferencesRequest,
-      success: EnvironmentCloudLinkStateResult,
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("liveActivityPreference", "/api/connect/live-activity-preference", {
-      headers: OptionalBearerHeaders,
-      payload: Schema.Struct({ liveActivitiesEnabled: Schema.Boolean }),
-      success: Schema.Struct({ ok: Schema.Boolean }),
-      error: EnvironmentHttpCloudErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("health", "/api/t3-connect/health", {
-      payload: RelayCloudEnvironmentHealthRequest,
-      success: RelayEnvironmentHealthResponse,
-      error: EnvironmentHttpCloudErrors,
-    }),
-  )
-  .add(
-    HttpApiEndpoint.post("t3MintCredential", "/api/t3-connect/mint-credential", {
-      payload: RelayCloudMintCredentialRequest,
-      success: RelayEnvironmentMintResponse,
-      error: EnvironmentHttpCloudErrors,
-    }),
-  ) {}
-
 /**
  * What a linking environment asks of this one over its link, outside `/mcp`. The handler accepts
  * only a peer link's own session, so no agent's tool list ever carries it.
@@ -1108,6 +1030,5 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
   .add(EnvironmentVoiceHttpApi)
-  .add(EnvironmentConnectHttpApi)
   .add(EnvironmentWebhooksHttpApi)
   .add(EnvironmentPeerLinkHttpApi) {}

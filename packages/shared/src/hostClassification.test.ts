@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isPublicFaviconHost } from "./hostClassification.ts";
+import { isLanEnvironmentUrl,  isPublicFaviconHost } from "./hostClassification.ts";
 
 describe("isPublicFaviconHost", () => {
   it("treats public hosts as public", () => {
@@ -108,5 +108,31 @@ describe("isPublicFaviconHost", () => {
   it("rejects malformed IPv4 text as a public host", () => {
     expect(isPublicFaviconHost("10.0.0.999")).toBe(true);
     expect(isPublicFaviconHost("10.0.0")).toBe(true);
+  });
+});
+
+describe("LAN environment addresses", () => {
+  it("accepts only loopback and private LAN literals", () => {
+    for (const url of [
+      "http://localhost:3773",
+      "http://127.0.0.1:3773",
+      "http://10.2.3.4:3773",
+      "http://172.16.2.3:3773",
+      "ws://192.168.2.3:3773",
+      "https://[fd00::ab]:3773",
+    ]) {
+      expect(isLanEnvironmentUrl(url)).toBe(true);
+    }
+    for (const url of [
+      "https://relay.t3.codes",
+      "https://box.example.ts.net",
+      "http://100.101.2.3:3773",
+      "http://[fd7a:115c:a1e0::1]:3773",
+      "http://8.8.8.8:3773",
+      "http://192.168.2.3@public.example",
+      "http://public.example@192.168.2.3",
+    ]) {
+      expect(isLanEnvironmentUrl(url)).toBe(false);
+    }
   });
 });

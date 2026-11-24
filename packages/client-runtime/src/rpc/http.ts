@@ -196,6 +196,7 @@ export const executeEnvironmentHttpRequest = <A, E, R>(
   request: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, RemoteEnvironmentRequestError, R> =>
   request.pipe(
+    Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
     Effect.timeoutOption(Duration.millis(timeoutMs)),
     Effect.flatMap(
       Option.match({

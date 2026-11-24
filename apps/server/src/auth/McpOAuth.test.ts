@@ -23,7 +23,6 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Schema from "effect/Schema";
 
-import * as CloudLink from "../cloud/CloudLink.ts";
 import * as ServerConfig from "../config.ts";
 import { makeDpopKey } from "./dpop.testkit.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -58,7 +57,6 @@ const notLinked: EnvironmentCloudLinkStateResult = {
 };
 const makeLayerRoutes = (
   capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void,
-  linkState: EnvironmentCloudLinkStateResult,
 ) =>
   Layer.mergeAll(
     Layer.effectDiscard(
@@ -70,9 +68,6 @@ const makeLayerRoutes = (
         McpOAuthHttp.layer.pipe(
           Layer.provide(McpOAuth.layer),
           Layer.provide(ServerSettings.layerTest({ linkedEnvironmentsEnabled: true })),
-          Layer.provide(
-            Layer.mock(CloudLink.CloudLink)({ linkState: () => Effect.succeed(linkState) }),
-          ),
         ),
       ),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
@@ -111,7 +106,6 @@ type Handler = (request: Request) => Effect.Effect<Response>;
 
 const withRoutes = <A, E>(
   use: (handler: Handler, auth: EnvironmentAuth.EnvironmentAuth["Service"]) => Effect.Effect<A, E>,
-  linkState = notLinked,
 ) =>
   Effect.gen(function* () {
     const random = yield* SecureRandom.SecureRandom;
@@ -439,68 +433,6 @@ it.live("signs in with a pairing code and issues a token only /mcp accepts", () 
   ),
 );
 
-it.live("signs in a hosted agent with an https callback that asked for a client secret", () =>
-  withRoutes((handler, auth) =>
-    Effect.gen(function* () {
-      const callbackUrl = "https://bot.example/oauth/callback";
-      const registered = yield* handler(
-        at("/oauth/mcp/register", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: encodeJson({
-            client_name: "Hosted bot",
-            redirect_uris: [callbackUrl],
-            token_endpoint_auth_method: "client_secret_post",
-          }),
-        }),
-      );
-      expect(registered.status).toBe(201);
-      const client = (yield* json<unknown>(registered)) as {
-        client_id: string;
-        token_endpoint_auth_method: string;
-      };
-      expect(client.token_endpoint_auth_method).toBe("none");
-
-      const params = authorizeParams(client.client_id, callbackUrl);
-      const details = yield* handler(postJson("/oauth/mcp/approval", params)).pipe(
-        Effect.flatMap(json<Record<string, unknown>>),
-      );
-      expect(details).toMatchObject({ clientName: "Hosted bot", redirectHost: "bot.example" });
-
-      const pairing = yield* auth.issuePairingCredential();
-      const approved = yield* decide(handler, params, {
-        _tag: "pairing-code",
-        access: "approval-required",
-        code: pairing.credential,
-      });
-      const callback = new URL(approved.redirectTo!);
-      expect(`${callback.origin}${callback.pathname}`).toBe(callbackUrl);
-
-      const tokenResponse = yield* handler(
-        at(
-          "/oauth/mcp/token",
-          form({
-            grant_type: "authorization_code",
-            code: callback.searchParams.get("code")!,
-            redirect_uri: callbackUrl,
-            client_id: client.client_id,
-            client_secret: "unused",
-            code_verifier: verifier,
-          }),
-        ),
-      );
-      expect(tokenResponse.status).toBe(200);
-      const token = (yield* json<unknown>(tokenResponse)) as { access_token: string };
-      const signedIn = yield* auth.authenticateMcpClient(
-        HttpServerRequest.fromWeb(
-          at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
-        ),
-      );
-      expect(signedIn).toMatchObject({ label: "Hosted bot", access: "approval-required" });
-    }),
-  ),
-);
-
 it.live("signs in Gemini, which registers six user-bound redirect URIs for one client", () =>
   withRoutes((handler, auth) =>
     Effect.gen(function* () {
@@ -785,49 +717,6 @@ it.live("an app approval code approves only an app sign-in, at its own level", (
       ).toBe(400);
     }),
   ),
-);
-
-it.effect(
-  "sends an app sign-in on the linked tunnel to the hosted app, and a link to its own page",
-  () =>
-    Effect.gen(function* () {
-      const handoff = (tunnelHostname: string, peerLink = false) =>
-        withRoutes(
-          (handler) =>
-            Effect.gen(function* () {
-              const registered = yield* handler(
-                at("/oauth/mcp/register", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: encodeJson({
-                    client_name: "Agent",
-                    redirect_uris: [REDIRECT],
-                    token_endpoint_auth_method: "none",
-                    ...(peerLink ? { software_id: MCP_PEER_LINK_SOFTWARE_ID } : {}),
-                  }),
-                }),
-              ).pipe(Effect.flatMap(json<{ client_id: string }>));
-              const query = new URLSearchParams(
-                authorizeParams(registered.client_id, "http://localhost:51234/callback"),
-              );
-              const response = yield* handler(at(`/oauth/mcp/authorize?${query}`));
-              return { location: response.headers.get("location")!, query: query.toString() };
-            }),
-          { ...notLinked, linked: true, cloudUserId: "user_1", tunnelHostname },
-        );
-
-      const onTunnel = yield* handoff("box.example.ts.net");
-      const hosted = new URL(onTunnel.location);
-      expect(`${hosted.origin}${hosted.pathname}`).toBe("https://app.t3.codes/approve-agent");
-      expect(hosted.searchParams.get("environment")).toEqual(expect.any(String));
-      hosted.searchParams.delete("environment");
-      expect(hosted.searchParams.toString()).toBe(onTunnel.query);
-
-      const elsewhere = yield* handoff("other.t3coderelay.com");
-      expect(elsewhere.location).toBe(`/connect-agent?${elsewhere.query}`);
-      const peerLink = yield* handoff("box.example.ts.net", true);
-      expect(peerLink.location).toBe(`/connect-agent?${peerLink.query}`);
-    }),
 );
 
 it.live("one-click approves only access the browser session holds the scopes for", () =>

@@ -35,7 +35,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
-import { isLocalLoopbackHost, isTailnetHost } from "@t3tools/shared/hostClassification";
+import { isLanEnvironmentUrl, isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -150,7 +150,10 @@ interface PeerLinkRow {
   readonly fenced: number;
 }
 
-const decodeUrls = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.String)));
+const decodeUrls = (value: string) =>
+  Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.String)))(value).pipe(
+    Effect.map((urls) => urls.filter(isLanEnvironmentUrl)),
+  );
 const encodeUrls = Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)));
 const decodeAccess = Schema.decodeUnknownEffect(AuthMcpClientAccess);
 
@@ -185,17 +188,11 @@ const peerOrigin = (url: string) => {
       }),
     );
   }
-  if (
-    parsed.protocol === "http:" &&
-    !isLocalLoopbackHost(parsed.hostname) &&
-    !isTailnetHost(parsed.hostname)
-  ) {
-    return Effect.fail(
-      new PeerLinkError({
-        reason: "unreachable",
-        message: `${parsed.origin} is plain http, which would send the link's credentials unencrypted. Use its https address, or its Tailscale address.`,
-      }),
-    );
+  if (!isLanEnvironmentUrl(parsed.href)) {
+    return Effect.fail(new PeerLinkError({
+      reason: "unreachable",
+      message: "Use a private LAN address for the linked environment.",
+    }));
   }
   return Effect.succeed(parsed.origin);
 };

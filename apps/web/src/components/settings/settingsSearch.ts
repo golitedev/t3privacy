@@ -552,13 +552,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
-    id: "guest-links",
-    title: msg("Guest links"),
-    to: "/settings/labs",
-    scope: "environment",
-    searchTerms: [msg("beta share guest invite link teammate watch t3 connect tunnel")],
-  },
-  {
     id: "linked-environments-beta",
     title: msg("Linked environments"),
     to: "/settings/labs",
@@ -1000,28 +993,10 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("telemetry analytics usage data tracking legal opt out")],
   },
   {
-    id: "telemetry-export",
-    title: msg("OpenTelemetry export"),
-    to: "/settings/diagnostics",
-    targetId: "telemetry-export",
-    scope: "environment",
-    searchTerms: [msg("OTel OTLP telemetry export endpoints logs traces metrics Grafana")],
-  },
-  {
     id: "diagnostics",
     title: msg("Diagnostics"),
     to: "/settings/maintenance",
     searchTerms: [msg("logs traces processes resource history failures spans cpu memory")],
-  },
-  {
-    id: "agent-feedback",
-    title: msg("Agent feedback"),
-    to: "/settings/labs",
-    scope: "environment-defaults",
-    agentFeedbackOnly: true,
-    searchTerms: [
-      msg("report bug problem t3 team send feedback agents tools automatic when i ask"),
-    ],
   },
   {
     id: "open-source-licenses",
@@ -1382,15 +1357,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     localBackendManagementOnly: true,
   },
   {
-    id: "tailscale-https",
-    title: msg("Tailscale HTTPS"),
-    to: "/settings/access",
-    targetId: "connections-environment",
-    searchTerms: [msg("serve magicdns endpoint remote secure network")],
-    desktopOnly: true,
-    localBackendManagementOnly: true,
-  },
-  {
     id: "wsl-backend",
     title: msg("WSL backend"),
     to: "/settings/access",
@@ -1403,16 +1369,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     windowsOnly: true,
     localBackendManagementOnly: true,
     wslAvailableOnly: true,
-  },
-  {
-    id: "t3-connect",
-    localEnvironmentOnly: true,
-    title: msg("T3 Connect"),
-    to: "/settings/access",
-    targetId: "connections-environment",
-    searchTerms: [msg("managed tunnel cloud other devices remote tunnels limit t3 chat")],
-    desktopOnly: true,
-    cloudOnly: true,
   },
   {
     id: "connect-device-approval",

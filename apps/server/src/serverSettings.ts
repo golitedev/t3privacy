@@ -392,8 +392,10 @@ export const readServerSettingsFromDisk = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const { settings: managed } = yield* ManagedPolicy.ManagedPolicy;
   const raw = yield* fs.readFileString(settingsPath).pipe(Effect.option);
-  return managed.applyLocks(
-    Option.isNone(raw) ? managed.defaults : decodeSettingsFile(raw.value, managed).settings,
+  return withoutAgentFeedback(
+    managed.applyLocks(
+      Option.isNone(raw) ? managed.defaults : decodeSettingsFile(raw.value, managed).settings,
+    ),
   );
 }).pipe(Effect.withSpan("ServerSettings.readServerSettingsFromDisk"));
 const LegacyProviderSettingsJson = fromLenientJson(
@@ -717,6 +719,11 @@ function foldLegacyProjectSettings(
   };
 }
 
+const withoutAgentFeedback = (settings: ServerSettings): ServerSettings => ({
+  ...settings,
+  agentFeedback: { ...settings.agentFeedback, mode: "off" },
+});
+
 const make = Effect.gen(function* () {
   const { settingsPath } = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
@@ -731,7 +738,7 @@ const make = Effect.gen(function* () {
   // Locks are laid over every settings value that leaves this service, never persisted.
   const toEffective = (settings: ServerSettings) =>
     resolveTextGenerationProvider(
-      managedProviders.applyLimits(managed.applyLocks(settings)),
+      withoutAgentFeedback(managedProviders.applyLimits(managed.applyLocks(settings))),
       managedProviders.isDriverAllowed,
     );
   const writeSemaphore = yield* Semaphore.make(1);

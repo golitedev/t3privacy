@@ -44,7 +44,7 @@ it("skips public and container addresses for a private-network listener", () => 
   };
 
   expect(resolveHeadlessConnectionString("0.0.0.0", 3773, { interfaces, platform: "linux" })).toBe(
-    "http://203.0.113.7:3773",
+    "http://10.0.0.5:3773",
   );
   expect(
     resolveHeadlessConnectionString("0.0.0.0", 3773, {
@@ -122,10 +122,12 @@ describe("acceptsPrivateNetworkConnection", () => {
   const accepts = (localAddress: string | undefined, remoteAddress: string | undefined) =>
     acceptsPrivateNetworkConnection({ localAddress, remoteAddress });
 
-  it("serves loopback, LAN, and tailnet clients", () => {
+  it("serves loopback and LAN clients", () => {
     expect(accepts("127.0.0.1", "127.0.0.1")).toBe(true);
     expect(accepts("::ffff:192.168.1.20", "::ffff:192.168.1.31")).toBe(true);
-    expect(accepts("100.101.102.103", "100.90.1.2")).toBe(true);
+    expect(accepts("100.101.102.103", "100.90.1.2")).toBe(false);
+    expect(accepts("fd00::20", "fd00::30")).toBe(true);
+    expect(accepts("fd7a:115c:a1e0::20", "fd7a:115c:a1e0::30")).toBe(false);
   });
 
   it("closes connections from or to a public address", () => {

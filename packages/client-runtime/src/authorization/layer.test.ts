@@ -15,7 +15,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
-import * as ManagedRelay from "../relay/managedRelay.ts";
+import * as Dpop from "../relay/dpopSigner.ts";
 import * as RpcHttp from "../rpc/http.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "./service.ts";
@@ -177,7 +177,7 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
         return next;
       }),
   });
-  const signer = ManagedRelay.ManagedRelayDpopSigner.of({
+  const signer = Dpop.DpopSigner.of({
     thumbprint: Ref.get(thumbprint),
     createProof: (proofInput) =>
       Ref.update(proofInputs, (current) => [...current, proofInput]).pipe(
@@ -213,7 +213,7 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
     Layer.provideMerge(
       Layer.mergeAll(
         RpcHttp.layerRemoteHttpClient(fetch.fetchFn),
-        Layer.succeed(ManagedRelay.ManagedRelayDpopSigner, signer),
+        Layer.succeed(Dpop.DpopSigner, signer),
         Layer.succeed(ManagedRelay.ManagedRelayClient, relay),
         Layer.succeed(ClientCapabilities.CloudSession, {
           identity: Ref.get(session),

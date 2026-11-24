@@ -62,8 +62,6 @@ import {
 
 const CHANNEL_CHANGE_RETRY_DELAY = Duration.seconds(1);
 const CHANNEL_CHANGE_RETRIES = 30;
-const AUTO_UPDATE_STARTUP_DELAY = "15 seconds";
-const AUTO_UPDATE_POLL_INTERVAL = "4 hours";
 const UPDATE_CHECK_WAIT = Duration.seconds(90);
 
 type UpdateAction = "check" | "download" | "install" | "install-recovery" | "channel";
@@ -1087,40 +1085,6 @@ export const make = Effect.gen(function* () {
     };
   });
 
-  const startUpdatePollers: Effect.Effect<void, never, Scope.Scope> = Effect.gen(function* () {
-    yield* Effect.sleep(AUTO_UPDATE_STARTUP_DELAY).pipe(
-      Effect.andThen(checkForUpdates("startup")),
-      Effect.catchCause((cause) => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.void;
-        }
-        const error = new DesktopUpdatePollerError({ poller: "startup", cause });
-        return logUpdaterError(error.message, {
-          errorTag: error._tag,
-          cause: describeUpdateErrorCause(error.cause),
-          poller: error.poller,
-        });
-      }),
-      Effect.forkScoped,
-    );
-    yield* Effect.sleep(AUTO_UPDATE_POLL_INTERVAL).pipe(
-      Effect.andThen(checkForUpdates("poll")),
-      Effect.forever,
-      Effect.catchCause((cause) => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.void;
-        }
-        const error = new DesktopUpdatePollerError({ poller: "poll", cause });
-        return logUpdaterError(error.message, {
-          errorTag: error._tag,
-          cause: describeUpdateErrorCause(error.cause),
-          poller: error.poller,
-        });
-      }),
-      Effect.forkScoped,
-    );
-  }).pipe(Effect.withSpan("desktop.updates.startPollers"));
-
   const handleUpdateAvailable = Effect.fn("desktop.updates.handleUpdateAvailable")(function* (
     raw: unknown,
   ) {
@@ -1401,7 +1365,6 @@ export const make = Effect.gen(function* () {
         runEffect(handleUpdateDownloaded(info));
       });
 
-      yield* startUpdatePollers;
     }).pipe(Effect.withSpan("desktop.updates.configure")),
     setChannel: Effect.fn("desktop.updates.setChannel")(function* (
       nextChannel: DesktopUpdateChannel,

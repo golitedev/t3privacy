@@ -15,10 +15,10 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 
 import {
-  ManagedRelayDpopKeyLoadError,
-  ManagedRelayDpopProofCreationError,
-  ManagedRelayDpopSigner,
-} from "./managedRelay.ts";
+  DpopKeyLoadError,
+  DpopProofCreationError,
+  DpopSigner,
+} from "./dpopSigner.ts";
 
 export class DpopProofError extends Schema.TaggedError<DpopProofError>()("DpopProofError", {
   message: Schema.String,
@@ -68,11 +68,11 @@ export const createProof = Effect.fn("DpopProof.createProof")(function* (input: 
 
 /** A relay DPoP signer that loads its key once and keeps it; a failed load is retried. */
 export const layerSigner = <E, R>(options: {
-  readonly keyStore: ManagedRelayDpopKeyLoadError["keyStore"];
+  readonly keyStore: DpopKeyLoadError["keyStore"];
   readonly loadOrCreateKey: Effect.Effect<DpopProofKey, E, R>;
 }) =>
   Layer.effect(
-    ManagedRelayDpopSigner,
+    DpopSigner,
     Effect.gen(function* () {
       const random = yield* SecureRandom.SecureRandom;
       const digest = yield* Digest.Digest;
@@ -92,17 +92,17 @@ export const layerSigner = <E, R>(options: {
         },
       );
       const loadKey = Cache.get(keyCache, undefined);
-      return ManagedRelayDpopSigner.of({
+      return DpopSigner.of({
         thumbprint: loadKey.pipe(
           Effect.map((loaded) => loaded.thumbprint),
           Effect.mapError(
-            (cause) => new ManagedRelayDpopKeyLoadError({ keyStore: options.keyStore, cause }),
+            (cause) => new DpopKeyLoadError({ keyStore: options.keyStore, cause }),
           ),
           Effect.withSpan("managedRelayDpopSigner.loadThumbprint"),
         ),
         createProof: Effect.fn("managedRelayDpopSigner.createProof")(function* (input) {
           const creationError = (cause: unknown) =>
-            new ManagedRelayDpopProofCreationError({ method: input.method, url: input.url, cause });
+            new DpopProofCreationError({ method: input.method, url: input.url, cause });
           const loaded = yield* loadKey.pipe(Effect.mapError(creationError));
           return yield* createProof({ ...input, key: loaded.key }).pipe(
             Effect.provideService(SecureRandom.SecureRandom, random),

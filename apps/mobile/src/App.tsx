@@ -20,13 +20,11 @@ import {
   type NavigationState,
 } from "@react-navigation/native";
 import { pipe } from "effect/Function";
-import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
 import * as Dialog from "./components/ui/Dialog";
-import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { installShowcaseCapture } from "./features/showcase/ShowcaseCaptureCoordinator";
 import {
@@ -57,7 +55,6 @@ import { environmentThreadShells, threadEnvironment } from "./state/threads";
 import { environmentShell, shellCachesReadAtom } from "./state/shell";
 import { OverlayPortalHost } from "./components/ui/OverlayPortal";
 import { shouldHandleAppLink, restoreDraftLinkState } from "./lib/appLinking";
-import { hasCloudPublicConfig } from "./features/cloud/publicConfig";
 import { takeScheduledTaskNewLink } from "./features/settings/scheduled-task-editor-state";
 import {
   pairingFormLinkAction,
@@ -79,7 +76,6 @@ import {
 import { useMobileNavigationTheme } from "./lib/useMobileNavigationTheme";
 import { installUiRuntimeMemoryWarningGc } from "./lib/useUiRuntimeMemoryWarningGc";
 import { SubscriptionUsageCoordinator } from "./widgets/SubscriptionUsageCoordinator";
-import { ConnectDeviceApprovalCoordinator } from "./features/connection/ConnectDeviceApprovalCoordinator";
 import { installSubscriptionUsageRefresh } from "./widgets/useSubscriptionUsage";
 import { GlobalVoiceInputControl } from "./features/voice-input/GlobalVoiceInputControl";
 import {
@@ -143,10 +139,9 @@ const appLinking = {
     "t3code://",
     "t3code-dev://",
     "t3code-preview://",
-    DEFAULT_HOSTED_APP_URL,
   ],
   config: { initialRouteName: "Home" },
-  filter: (url: string) => shouldHandleAppLink(url, hasCloudPublicConfig()),
+  filter: (url: string) => shouldHandleAppLink(url, false),
   getInitialURL: async () => (await Linking.getInitialURL()) ?? (await launchWorkspaceURL()),
   getActionFromState: (
     state: Parameters<typeof getActionFromState>[0],
@@ -274,13 +269,11 @@ function QuickActionsLanguage() {
 export default function App() {
   return (
     <RegistryContext.Provider value={appAtomRegistry}>
-      <CloudAuthProvider>
         <AppearancePreferencesProvider>
           <I18nProvider>
             <AppContent />
           </I18nProvider>
         </AppearancePreferencesProvider>
-      </CloudAuthProvider>
     </RegistryContext.Provider>
   );
 }
@@ -302,7 +295,6 @@ function AppContent() {
       <SplashScreenCoordinator />
       <QuickActionsLanguage />
       <SubscriptionUsageCoordinator />
-      <ConnectDeviceApprovalCoordinator />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>

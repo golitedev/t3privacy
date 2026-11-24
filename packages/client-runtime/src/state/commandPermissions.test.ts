@@ -179,12 +179,12 @@ describe("command permissions", () => {
     }),
   );
 
-  it.effect.each([WS_METHODS.serverCheckOtlpEndpoint, WS_METHODS.serverCheckSecretSource])(
-    "requires the destination settings grant for %s",
-    (method) =>
+  it.effect(
+    "requires the destination settings grant to check a secret source",
+    () =>
       Effect.gen(function* () {
         const registry = yield* setup;
-        const check = createCommandPermissions(runtime, method);
+        const check = createCommandPermissions(runtime, WS_METHODS.serverCheckSecretSource);
         registry.set(sessions(env), AsyncResult.success(grant(true)));
         expect(registry.get(check.permissionAtom(env))).toBe(false);
         registry.set(

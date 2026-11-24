@@ -29,7 +29,7 @@ import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import * as TokenStore from "../authorization/tokenStore.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
+import * as Dpop from "../relay/dpopSigner.ts";
 import * as RpcHttp from "../rpc/http.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import { fetchEnvironmentSessionState } from "../state/session.ts";
@@ -1992,7 +1992,7 @@ describe("EnvironmentSupervisor", () => {
             return Promise.reject(new Error(`Unexpected HTTP request to ${request.url}`));
         }
       }) satisfies typeof fetch;
-      const signer = ManagedRelay.ManagedRelayDpopSigner.of({
+      const signer = Dpop.DpopSigner.of({
         thumbprint: Effect.succeed("test-thumbprint"),
         createProof: () => Effect.succeed("test-proof"),
       });
@@ -2035,7 +2035,7 @@ describe("EnvironmentSupervisor", () => {
         Effect.provide(
           Layer.mergeAll(
             layerHttp,
-            Layer.succeed(ManagedRelay.ManagedRelayDpopSigner, signer),
+            Layer.succeed(Dpop.DpopSigner, signer),
             Layer.succeed(ManagedRelay.ManagedRelayClient, relay),
             Layer.succeed(ClientCapabilities.CloudSession, {
               identity: Effect.succeedSome({ accountId: "test-account" }),

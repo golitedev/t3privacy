@@ -60,7 +60,6 @@ import * as ServerSettings from "../../serverSettings.ts";
 import * as McpHttpServer from "../McpHttpServer.ts";
 import * as McpInvocationContext from "../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
-import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { dispatchFailure } from "../threadAccess.ts";
 import * as EnvironmentHandlers from "./environment/handlers.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
@@ -578,58 +577,6 @@ it.effect("t3_queue list and read load only the queued runs and their messages",
         Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(NodeCrypto.layer),
         Layer.provide(historyReads(reads)),
-      ),
-    ),
-  );
-});
-
-it.effect("handoff analytics read only the caller's active run and its message", () => {
-  const reads: Array<string> = [];
-  const attachments = [{ type: "image", id: "shot", name: "shot.png" }];
-  const dispatched: Array<unknown> = [];
-  const recorded = Deferred.makeUnsafe<void>();
-  return Effect.gen(function* () {
-    const server = yield* McpServer.McpServer;
-    yield* server
-      .callTool({
-        name: "t3_queue",
-        arguments: { action: "edit", queuedRunId: "run:queued", text: "Edited" },
-      })
-      .pipe(
-        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-        Effect.provideService(McpSchema.McpServerClient, client),
-      );
-    yield* Deferred.await(recorded);
-    expect(reads).toEqual([]);
-    // The edit keeps the queued image, so `/logout` stays an ordinary prompt and is not refused.
-    const attached = yield* server
-      .callTool({
-        name: "t3_queue",
-        arguments: { action: "edit", queuedRunId: "run:queued", text: " /LOGOUT " },
-      })
-      .pipe(
-        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-        Effect.provideService(McpSchema.McpServerClient, client),
-      );
-    expect(attached.isError).not.toBe(true);
-    expect(dispatched).toMatchObject([{ text: "Edited" }, { text: " /LOGOUT ", attachments }]);
-    expect(dispatched[0]).not.toHaveProperty("attachments");
-  }).pipe(
-    Effect.provide(
-      layerThreadToolkit.pipe(
-        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
-        Layer.provide(NodeCrypto.layer),
-        Layer.provide(historyReads(reads, { attachments, dispatched })),
-        Layer.provide(
-          Layer.succeed(
-            AnalyticsService.AnalyticsService,
-            AnalyticsService.AnalyticsService.of({
-              record: () => Deferred.succeed(recorded, undefined).pipe(Effect.as(true)),
-              flush: Effect.void,
-              recordOwners: () => Effect.void,
-            }),
-          ),
-        ),
       ),
     ),
   );

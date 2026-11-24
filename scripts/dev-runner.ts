@@ -21,7 +21,6 @@ import { Argument, Command, Flag } from "effect/cli";
 import { ChildProcess } from "effect/process";
 
 import { defaultDevMemoryLimitBytes, enforceDevMemoryLimit } from "./lib/dev-memory-limit.ts";
-import { type DevShareError, shareDevServer, unshareDevServer } from "./lib/dev-share.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 
 Object.assign(process.env, loadRepoEnv());
@@ -188,7 +187,7 @@ export class DevRunnerHostNotProxiableError extends Schema.TaggedError<DevRunner
   },
 ) {
   override get message(): string {
-    return `--host ${this.host} cannot be combined with ${this.mode}: single-origin browser dev proxies the backend at localhost, and a backend bound only to ${this.host} leaves localhost unanswered, so every proxied request fails. Use a wildcard (0.0.0.0 or ::) to serve that interface and loopback together, or --share for remote access.`;
+    return `--host ${this.host} cannot be combined with ${this.mode}: single-origin browser dev proxies the backend at localhost, and a backend bound only to ${this.host} leaves localhost unanswered, so every proxied request fails. Use a wildcard (0.0.0.0 or ::) to serve that interface and loopback together, for LAN access.`;
   }
 }
 
@@ -199,7 +198,7 @@ export class DevRunnerBuiltNeedsShareError extends Schema.TaggedError<DevRunnerB
   },
 ) {
   override get message(): string {
-    return `--built only works with \`dev --share\` (got ${this.mode}${this.mode === "dev" ? " without --share" : ""}): the backend serves the built client on the tailnet URL.`;
+    return `--built only works with \`dev\` (got ${this.mode}): the backend serves the built client.`;
   }
 }
 
@@ -346,7 +345,6 @@ export const createDevRunnerEnv = Effect.fn("dev-runner.createDevRunnerEnv")(fun
 
   // Each worktree has its own state, so a dev server would count as a new
   // install of the developer's real accounts. Set it explicitly to opt in.
-  output.T3CODE_TELEMETRY_ENABLED = baseEnv.T3CODE_TELEMETRY_ENABLED ?? "false";
 
   if (!isDesktopMode) {
     output.T3CODE_PORT = String(serverPort);
@@ -725,7 +723,6 @@ interface DevRunnerCliInput {
   readonly port: number | undefined;
   readonly devUrl: URL | undefined;
   readonly dryRun: boolean;
-  readonly share: boolean;
   readonly seed?: boolean | undefined;
   readonly built: boolean;
   readonly memoryLimitGb?: number | undefined;
@@ -753,7 +750,7 @@ export const runDevRunnerWithInput = Effect.fn("dev-runner.runDevRunnerWithInput
     return yield* new DevRunnerHostNotProxiableError({ mode: input.mode, host: input.host });
   }
 
-  if (input.built && (input.mode !== "dev" || !input.share)) {
+  if (input.built && input.mode !== "dev") {
     return yield* new DevRunnerBuiltNeedsShareError({ mode: input.mode });
   }
 
@@ -816,92 +813,9 @@ export const runDevRunnerWithInput = Effect.fn("dev-runner.runDevRunnerWithInput
     return;
   }
 
-  const sharedWebPort = BASE_WEB_PORT + webOffset;
-  let built = false;
-  if (input.share) {
-    if (input.mode === "dev:server") {
-      yield* Effect.logInfo("[dev-runner] --share has no effect for dev:server (no web server).");
-    } else if (input.mode === "dev:desktop") {
-      yield* Effect.logWarning(
-        "[dev-runner] --share is not supported for dev:desktop (the renderer is pinned to loopback). Use `dev`, which runs the whole browser stack.",
-      );
-    } else {
-      // acquireRelease, not share-then-addFinalizer: the mapping outlives this
-      // process (and reboots), so the cleanup has to be registered atomically
-      // with creating it. An interrupt landing in between would otherwise
-      // leave a mapping pointing at a port nothing is listening on.
-      const shared = yield* Effect.acquireRelease(
-        shareDevServer({
-          webPort: sharedWebPort,
-          // The backend binds 127.0.0.1 unless --host changes it. A wildcard
-          // still answers there; `--host ::1` binds only the IPv6 loopback, and
-          // `localhost` binds whichever loopback Node resolves first.
-          ...(input.built
-            ? {
-                localTarget: {
-                  port: Number(env.T3CODE_PORT),
-                  host: sharedBackendTargetHost(input.host),
-                },
-              }
-            : {}),
-        }),
-        () =>
-          unshareDevServer(sharedWebPort).pipe(
-            Effect.flatMap((result) =>
-              result.cleared
-                ? Effect.void
-                : Effect.logWarning(
-                    `[dev-runner] could not remove the tailnet mapping for port ${String(sharedWebPort)}${
-                      result.explanation ? `: ${result.explanation}` : ""
-                    }. Remove it with \`tailscale serve --https=${String(sharedWebPort)} --set-path=/ off\`.`,
-                  ),
-            ),
-          ),
-      ).pipe(
-        Effect.tapError((error: DevShareError) =>
-          Effect.logWarning(
-            `[dev-runner] could not share on the tailnet: ${error.message}${
-              error.hint ? ` — ${error.hint}` : ""
-            }`,
-          ),
-        ),
-        Effect.option,
-        Effect.map(Option.getOrUndefined),
-      );
+  const built = input.built;
+  if (built) env.T3CODE_BUILT_DEV = "1";
 
-      if (shared) {
-        // The app is reached from the tailnet origin. Vite already allows
-        // *.ts.net hosts; the backend needs the origin for credentialed
-        // requests that bypass the proxy (desktop renderer, direct calls).
-        env.T3CODE_DEV_ALLOWED_ORIGINS = [
-          env.T3CODE_DEV_ALLOWED_ORIGINS,
-          new URL(shared.url).origin,
-        ]
-          .filter((entry) => entry && entry.length > 0)
-          .join(",");
-        if (input.devUrl === undefined) {
-          env.VITE_DEV_SERVER_URL = shared.url;
-        }
-        if (input.built) {
-          built = true;
-          env.T3CODE_BUILT_DEV = "1";
-        } else if (env.T3CODE_BUNDLED_DEV === undefined) {
-          // A shared origin serves a remote browser, where unbundled dev's
-          // per-module requests each pay a tailnet round trip — a cold module
-          // graph takes minutes to first paint. Bundled dev collapses that to a
-          // few chunk requests.
-          env.T3CODE_BUNDLED_DEV = "1";
-        }
-        yield* Effect.logInfo(`[dev-runner] shared on tailnet: ${shared.url}`);
-      } else if (input.built) {
-        yield* Effect.logWarning(
-          "[dev-runner] --built needs the tailnet share; running the Vite dev server instead.",
-        );
-      }
-    }
-  }
-
-  // After sharing, so the warm step sees the same bundled-dev env as Vite.
   yield* prepareFirstStart({
     mode: input.mode,
     seed: input.seed !== false,
@@ -1019,12 +933,6 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.withDescription("Resolve mode/ports/env and print, but do not spawn Vite+."),
     Flag.withDefault(false),
   ),
-  share: Flag.Boolean("share").pipe(
-    Flag.withDescription(
-      "Publish the web dev server on this machine's tailnet over HTTPS (via `tailscale serve`) and print the pairing URL for it. Removed again on exit.",
-    ),
-    Flag.withDefault(false),
-  ),
   seed: Flag.Boolean("seed").pipe(
     Flag.withDescription(
       "Seed an empty worktree database from ~/.t3 on first start (read-only, via migrate-dev-db) if the source is at most 500 MiB. On by default; --no-seed or T3CODE_DEV_SEED=0 skips it.",
@@ -1033,7 +941,7 @@ const devRunnerCli = Command.make("dev-runner", {
   ),
   built: Flag.Boolean("built").pipe(
     Flag.withDescription(
-      "With --share: serve a production web build from the backend instead of the Vite dev server. Rebuilds on change, no HMR, much smaller remote loads.",
+      "Serve a production web build from the backend instead of the Vite dev server. Rebuilds on change, no HMR, much smaller remote loads.",
     ),
     Flag.withDefault(false),
   ),
@@ -1065,7 +973,7 @@ const cliRuntimeLayer = Layer.mergeAll(
 );
 
 if (import.meta.main) {
-  // runMain interrupts (running finalizers such as the --share unmapping) only
+  // runMain interrupts only
   // on SIGINT/SIGTERM; a closed terminal or dropped SSH session sends SIGHUP.
   process.on("SIGHUP", () => process.kill(process.pid, "SIGTERM"));
   Command.run(devRunnerCli, { version: "0.0.0" }).pipe(
