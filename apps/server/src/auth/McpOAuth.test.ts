@@ -4,7 +4,6 @@ import {
   AuthMcpClientAccess,
   AuthStandardClientScopes,
   type AuthCreatePairingCredentialInput,
-  type EnvironmentCloudLinkStateResult,
   EnvironmentHttpApi,
   MCP_PEER_LINK_SOFTWARE_ID,
   mcpClientScopes,
@@ -48,16 +47,8 @@ const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
   Layer.provideMerge(ServerEnvironment.layerIdentity),
   Layer.provide(layerConfig),
 );
-const notLinked: EnvironmentCloudLinkStateResult = {
-  linked: false,
-  cloudUserId: null,
-  relayUrl: null,
-  relayIssuer: null,
-  publishAgentActivity: false,
-};
-const makeLayerRoutes = (
-  capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void,
-) =>
+
+const makeLayerRoutes = (capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void) =>
   Layer.mergeAll(
     Layer.effectDiscard(
       EnvironmentAuth.EnvironmentAuth.pipe(Effect.tap((auth) => Effect.sync(() => capture(auth)))),
@@ -113,7 +104,7 @@ const withRoutes = <A, E>(
     let routerAuth: EnvironmentAuth.EnvironmentAuth["Service"] | undefined;
     const layerRoutes = makeLayerRoutes((auth) => {
       routerAuth = auth;
-    }, linkState);
+    });
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (web) =>

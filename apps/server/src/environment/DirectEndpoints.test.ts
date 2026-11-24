@@ -1,19 +1,7 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId } from "@t3tools/contracts";
 import type * as NodeOS from "node:os";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
-import * as HttpClient from "effect/http/HttpClient";
-import type * as HttpClientRequest from "effect/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+
 import { describe, expect, it } from "vite-plus/test";
 
-import * as ServerConfig from "../config.ts";
-import * as DirectEndpoints from "./DirectEndpoints.ts";
-import * as ServerEnvironment from "./ServerEnvironment.ts";
 import { resolveBoundEndpoints } from "./DirectEndpoints.ts";
 
 const INTERFACES: ReturnType<typeof NodeOS.networkInterfaces> = {
@@ -77,17 +65,6 @@ const INTERFACES: ReturnType<typeof NodeOS.networkInterfaces> = {
   ],
 };
 
-const vpnInterface = (address: string) => [
-  {
-    address,
-    netmask: "255.255.255.255",
-    family: "IPv4" as const,
-    mac: "00:00:00:00:00:00",
-    internal: false,
-    cidr: `${address}/32`,
-  },
-];
-
 const virtualInterface = (address: string, mac = "02:42:ac:11:00:01") => [
   {
     address,
@@ -100,7 +77,6 @@ const virtualInterface = (address: string, mac = "02:42:ac:11:00:01") => [
 ];
 
 describe("resolveBoundEndpoints", () => {
-
   it("skips container and VM networks, which only this machine reaches", () => {
     const interfaces = {
       ...INTERFACES,
@@ -115,7 +91,6 @@ describe("resolveBoundEndpoints", () => {
       resolveBoundEndpoints({ platform: "linux", host: "0.0.0.0", port: 3773, interfaces }),
     ).toEqual([
       { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
       { kind: "lan", httpBaseUrl: "http://192.168.1.20:3773/" },
     ]);
   });
@@ -130,10 +105,7 @@ describe("resolveBoundEndpoints", () => {
     };
     expect(
       resolveBoundEndpoints({ platform: "linux", host: "0.0.0.0", port: 3773, interfaces }),
-    ).toEqual([
-      { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
-    ]);
+    ).toEqual([{ kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" }]);
   });
 
   it("keeps a Windows alias matching a Linux container prefix eligible", () => {
@@ -145,7 +117,6 @@ describe("resolveBoundEndpoints", () => {
       resolveBoundEndpoints({ platform: "win32", host: "0.0.0.0", port: 3773, interfaces }),
     ).toEqual([
       { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
       { kind: "lan", httpBaseUrl: "http://192.168.1.30:3773/" },
     ]);
   });
@@ -164,7 +135,6 @@ describe("resolveBoundEndpoints", () => {
     const input = { host: "0.0.0.0", port: 3773, interfaces };
     const retained = [
       { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
-      { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
       ...[30, 31, 32, 33].map((last) => ({
         kind: "lan",
         httpBaseUrl: `http://192.168.1.${last}:3773/`,
@@ -200,91 +170,17 @@ describe("resolveBoundEndpoints", () => {
     ).toEqual([]);
   });
 
-  it("never reports an IPv4-mapped host, which can name the client's own loopback", () => {
-    expect(
-      resolveBoundEndpoints({
-        platform: "linux",
-        host: "::ffff:127.0.0.1",
-        port: 3773,
-        interfaces: INTERFACES,
-      }),
-    ).toEqual([]);
-  });
+  it.each(["::ffff:127.0.0.1", "::ffff:7f00:1"])(
+    "never advertises the IPv4-mapped address %s",
+    (host) => {
+      expect(
+        resolveBoundEndpoints({
+          platform: "linux",
+          host,
+          port: 3773,
+          interfaces: INTERFACES,
+        }),
+      ).toEqual([]);
+    },
+  );
 });
-
-const TAILSCALE_STATUS_JSON = JSON.stringify({
-  Self: { DNSName: "bb-1.tail1234.ts.net.", TailscaleIPs: ["100.64.1.2"] },
-});
-
-const layerTailscaleUp = Layer.succeed(
-  ChildProcessSpawner.ChildProcessSpawner,
-  ChildProcessSpawner.make(() =>
-    Effect.succeed(
-      ChildProcessSpawner.makeHandle({
-        pid: ChildProcessSpawner.ProcessId(1),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
-        isRunning: Effect.succeed(false),
-        kill: () => Effect.void,
-        unref: Effect.succeed(Effect.void),
-        stdin: Sink.drain,
-        stdout: Stream.make(new TextEncoder().encode(TAILSCALE_STATUS_JSON)),
-        stderr: Stream.empty,
-        all: Stream.empty,
-        getInputFd: () => Sink.drain,
-        getOutputFd: () => Stream.empty,
-      }),
-    ),
-  ),
-);
-
-const T3_DESCRIPTOR_BODY = JSON.stringify({
-  environmentId: "serve-test",
-  label: "Serve test",
-  platform: { os: "darwin", arch: "arm64" },
-  serverVersion: "0.0.0-test",
-  capabilities: { repositoryIdentity: true },
-});
-
-const serveProbeResponse = (request: HttpClientRequest.HttpClientRequest, status: number) =>
-  HttpClientResponse.fromWeb(
-    request,
-    new Response(status === 200 ? T3_DESCRIPTOR_BODY : null, { status }),
-  );
-
-const layerServeProbe = (status: number) =>
-  Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => Effect.succeed(serveProbeResponse(request, status))),
-  );
-
-const layerServeConfig = (host = "127.0.0.1") =>
-  Layer.effect(
-    ServerConfig.ServerConfig,
-    Effect.map(ServerConfig.ServerConfig, (config) => ({
-      ...config,
-      host,
-      port: 3773,
-      tailscaleServeEnabled: true,
-      tailscaleServePort: 443,
-    })),
-  ).pipe(
-    Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-direct-" })),
-    Layer.provide(NodeServices.layer),
-    Layer.merge(
-      Layer.succeed(ServerEnvironment.ServerEnvironment, {
-        getEnvironmentId: Effect.succeed(EnvironmentId.make("serve-test")),
-        getDescriptor: Effect.die("unused"),
-      }),
-    ),
-  );
-
-const resolveWithServe = (probeStatus: number) =>
-  Effect.flatMap(DirectEndpoints.DirectEndpoints, (service) => service.resolve()).pipe(
-    Effect.provide(
-      DirectEndpoints.layer.pipe(
-        Layer.provide(
-          Layer.mergeAll(layerServeConfig(), layerTailscaleUp, layerServeProbe(probeStatus)),
-        ),
-      ),
-    ),
-  );

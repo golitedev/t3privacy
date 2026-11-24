@@ -32,11 +32,7 @@ import {
   PrimaryConnectionTarget,
 } from "./model.ts";
 import * as Onboarding from "./onboarding.ts";
-import {
-  prepareBearerConnectionUpdate,
-  preparePairingRegistration,
-  prepareSshRegistration,
-} from "./onboarding.ts";
+import { prepareBearerConnectionUpdate, preparePairingRegistration } from "./onboarding.ts";
 import * as EnvironmentRegistry from "./registry.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import { connectionRoutes, routeHttpBaseUrl } from "./routes.ts";
@@ -202,13 +198,13 @@ function layerPairingOnboarding(
 }
 
 const PAIRED_ENVIRONMENT_ID = EnvironmentId.make("environment-paired");
-const PAIRING_INPUT = { host: "remote.example.test", pairingCode: "pairing-token" };
+const PAIRING_INPUT = { host: "192.168.1.22", pairingCode: "pairing-token" };
 const PAIRED_PROFILE = new BearerConnectionProfile({
-  connectionId: "bearer:environment-paired:https://remote.example.test",
+  connectionId: "bearer:environment-paired:https://192.168.1.22",
   environmentId: PAIRED_ENVIRONMENT_ID,
   label: "Paired environment",
-  httpBaseUrl: "https://remote.example.test/",
-  wsBaseUrl: "wss://remote.example.test/",
+  httpBaseUrl: "https://192.168.1.22/",
+  wsBaseUrl: "wss://192.168.1.22/",
 });
 const UNSUPPORTED_ERROR = new ConnectionBlockedError({
   reason: "unsupported",
@@ -240,11 +236,25 @@ const registerSwitchedOffEnvironment = Effect.gen(function* () {
 });
 
 describe("connection onboarding", () => {
+  it.effect.each(["203.0.113.20", "100.64.0.20", "public.example.test"])(
+    "refuses %s before sending a pairing credential",
+    (host) =>
+      Effect.gen(function* () {
+        const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
+        const error = yield* preparePairingRegistration({
+          host,
+          pairingCode: "pairing-token",
+        }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)), Effect.flip);
+        expect(error).toMatchObject({ reason: "configuration" });
+        expect(calls).toEqual([]);
+      }),
+  );
+
   it.effect("prepares a persisted bearer registration from pairing details", () =>
     Effect.gen(function* () {
       const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
       const registration = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)));
 
@@ -253,22 +263,22 @@ describe("connection onboarding", () => {
         target: {
           environmentId: "environment-paired",
           label: "Paired environment",
-          connectionId: "bearer:environment-paired:https://remote.example.test",
+          connectionId: "bearer:environment-paired:https://192.168.1.22",
         },
         profile: {
           environmentId: "environment-paired",
           label: "Paired environment",
-          connectionId: "bearer:environment-paired:https://remote.example.test",
-          httpBaseUrl: "https://remote.example.test/",
-          wsBaseUrl: "wss://remote.example.test/",
+          connectionId: "bearer:environment-paired:https://192.168.1.22",
+          httpBaseUrl: "https://192.168.1.22/",
+          wsBaseUrl: "wss://192.168.1.22/",
         },
         credential: {
           token: "bearer-token",
         },
       });
       expect(calls.map((call) => call.url)).toEqual([
-        "https://remote.example.test/.well-known/t3/environment",
-        "https://remote.example.test/oauth/token",
+        "https://192.168.1.22/.well-known/t3/environment",
+        "https://192.168.1.22/oauth/token",
       ]);
 
       const tokenRequest = calls.find((call) => call.url.endsWith("/oauth/token"));
@@ -318,13 +328,13 @@ describe("connection onboarding", () => {
       const before = yield* registerSwitchedOffEnvironment;
 
       const error = yield* onboarding
-        .registerPairing({ host: "attacker.example.test", pairingCode: "pairing-token" })
+        .registerPairing({ host: "192.168.1.25", pairingCode: "pairing-token" })
         .pipe(Effect.flip);
 
       expect(error).toMatchObject({ _tag: "ConnectionBlockedError", reason: "configuration" });
       expect(yield* SubscriptionRef.get(registry.entries)).toEqual(before);
       expect(calls.map((call) => call.url)).toEqual([
-        "https://attacker.example.test/.well-known/t3/environment",
+        "https://192.168.1.25/.well-known/t3/environment",
       ]);
     }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)));
   });
@@ -382,7 +392,7 @@ describe("connection onboarding", () => {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
       const onboarding = yield* Onboarding.ConnectionOnboarding;
       const pairing = yield* onboarding
-        .registerPairing({ host: "attacker.example.test", pairingCode: "pairing-token" })
+        .registerPairing({ host: "192.168.1.25", pairingCode: "pairing-token" })
         .pipe(Effect.result, Effect.forkChild);
       yield* Effect.promise(() => exchangeReached);
       const before = yield* registerSwitchedOffEnvironment;
@@ -405,14 +415,14 @@ describe("connection onboarding", () => {
       yield* registerSwitchedOffEnvironment;
 
       yield* onboarding.registerPairing({
-        host: "lan.example.test",
+        host: "192.168.1.23",
         pairingCode: "pairing-token",
         expectedEnvironmentId: PAIRED_ENVIRONMENT_ID,
       });
 
       const entry = (yield* SubscriptionRef.get(registry.entries)).get(PAIRED_ENVIRONMENT_ID);
       expect(entry === undefined ? [] : connectionRoutes(entry).map(routeHttpBaseUrl)).toEqual(
-        expect.arrayContaining(["https://remote.example.test/", "https://lan.example.test/"]),
+        expect.arrayContaining(["https://192.168.1.22/", "https://192.168.1.23/"]),
       );
     }).pipe(Effect.provide(layerPairingOnboarding())),
   );
@@ -532,7 +542,7 @@ describe("connection onboarding", () => {
     Effect.gen(function* () {
       const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
       const error = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       }).pipe(
         Effect.provide(
@@ -542,7 +552,7 @@ describe("connection onboarding", () => {
       );
       expect(error).toMatchObject({ reason: "unsupported" });
       expect(calls.map((call) => call.url)).toEqual([
-        "https://remote.example.test/.well-known/t3/environment",
+        "https://192.168.1.22/.well-known/t3/environment",
       ]);
     }),
   );
@@ -552,7 +562,7 @@ describe("connection onboarding", () => {
   ] as const)("preserves the $label grant when pairing a remote environment", ({ scopes }) =>
     Effect.gen(function* () {
       const registration = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       });
 
@@ -574,7 +584,7 @@ describe("connection onboarding", () => {
   ])("pairs with $name as DPoP: $dpop", ({ renews, signer, dpop }) =>
     Effect.gen(function* () {
       const registration = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       });
       expect(registration.credential).toMatchObject(
@@ -604,14 +614,14 @@ describe("connection onboarding", () => {
     Effect.gen(function* () {
       const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
       const error = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
         expectedEnvironmentId: EnvironmentId.make("some-other-machine"),
       }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)), Effect.flip);
       expect(error).toMatchObject({ reason: "configuration" });
       expect(error.message).toContain("different machine");
       expect(calls.map((call) => call.url)).toEqual([
-        "https://remote.example.test/.well-known/t3/environment",
+        "https://192.168.1.22/.well-known/t3/environment",
       ]);
     }),
   );
@@ -620,7 +630,7 @@ describe("connection onboarding", () => {
     Effect.gen(function* () {
       const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
       const error = yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       }).pipe(
         Effect.provide(
@@ -631,7 +641,7 @@ describe("connection onboarding", () => {
       expect(error).toMatchObject({ reason: "unsupported" });
       expect(error).not.toHaveProperty("serverUpdateRequired");
       expect(calls.map((call) => call.url)).toEqual([
-        "https://remote.example.test/.well-known/t3/environment",
+        "https://192.168.1.22/.well-known/t3/environment",
       ]);
     }),
   );
@@ -641,12 +651,12 @@ describe("connection onboarding", () => {
       const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
 
       yield* preparePairingRegistration({
-        host: "remote.example.test",
+        host: "192.168.1.22",
         pairingCode: "pairing-token",
       }).pipe(Effect.provide(layerPairingOnboarding({ failDescriptor: true }, calls)), Effect.flip);
 
       expect(calls.map((call) => call.url)).toEqual([
-        "https://remote.example.test/.well-known/t3/environment",
+        "https://192.168.1.22/.well-known/t3/environment",
       ]);
     }),
   );
@@ -658,7 +668,7 @@ describe("connection onboarding", () => {
         input: {
           environmentId,
           label: "  Renamed environment  ",
-          httpBaseUrl: "http://100.65.180.100:3773/path",
+          httpBaseUrl: "http://192.168.1.26:3773/path",
         },
         entry: Option.some({
           target: new BearerConnectionTarget({
@@ -671,8 +681,8 @@ describe("connection onboarding", () => {
               connectionId: "bearer:environment-paired",
               environmentId,
               label: "Old label",
-              httpBaseUrl: "http://old.example.test/",
-              wsBaseUrl: "ws://old.example.test/",
+              httpBaseUrl: "http://192.168.1.24/",
+              wsBaseUrl: "ws://192.168.1.24/",
             }),
           ),
           enabled: true,
@@ -689,60 +699,9 @@ describe("connection onboarding", () => {
         profile: {
           environmentId,
           label: "Renamed environment",
-          httpBaseUrl: "http://100.65.180.100:3773/",
-          wsBaseUrl: "ws://100.65.180.100:3773/",
+          httpBaseUrl: "http://192.168.1.26:3773/",
+          wsBaseUrl: "ws://192.168.1.26:3773/",
         },
-        credential: { token: "bearer-token" },
-      });
-    }),
-  );
-
-  it.effect("prepares an SSH registration from the provisioned platform environment", () =>
-    Effect.gen(function* () {
-      const target = {
-        alias: "devbox",
-        hostname: "devbox.example.test",
-        username: "developer",
-        port: 22,
-      };
-      const registration = yield* prepareSshRegistration({
-        target,
-      }).pipe(
-        Effect.provideService(
-          ClientCapabilities.SshEnvironmentGateway,
-          ClientCapabilities.SshEnvironmentGateway.of({
-            provision: () =>
-              Effect.succeed({
-                environmentId: EnvironmentId.make("environment-ssh"),
-                label: "Remote development box",
-                bootstrap: {
-                  target,
-                  httpBaseUrl: "http://127.0.0.1:3201",
-                  wsBaseUrl: "ws://127.0.0.1:3201",
-                  pairingToken: "pairing-token",
-                },
-                bearerToken: "bearer-token",
-              }),
-            prepare: () => Effect.die("unused"),
-            disconnect: () => Effect.die("unused"),
-          }),
-        ),
-      );
-
-      expect(registration).toMatchObject({
-        _tag: "SshConnectionRegistration",
-        target: {
-          environmentId: "environment-ssh",
-          label: "Remote development box",
-          connectionId: 'ssh:environment-ssh:["devbox","devbox.example.test","developer",22]',
-        },
-        profile: {
-          environmentId: "environment-ssh",
-          label: "Remote development box",
-          connectionId: 'ssh:environment-ssh:["devbox","devbox.example.test","developer",22]',
-          target,
-        },
-        // Saved so the first connect reuses this pairing instead of adding another.
         credential: { token: "bearer-token" },
       });
     }),

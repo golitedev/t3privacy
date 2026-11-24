@@ -150,10 +150,9 @@ interface PeerLinkRow {
   readonly fenced: number;
 }
 
+const decodeUrlsJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)));
 const decodeUrls = (value: string) =>
-  Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.String)))(value).pipe(
-    Effect.map((urls) => urls.filter(isLanEnvironmentUrl)),
-  );
+  decodeUrlsJson(value).pipe(Effect.map((urls) => urls.filter(isLanEnvironmentUrl)));
 const encodeUrls = Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)));
 const decodeAccess = Schema.decodeUnknownEffect(AuthMcpClientAccess);
 
@@ -189,10 +188,12 @@ const peerOrigin = (url: string) => {
     );
   }
   if (!isLanEnvironmentUrl(parsed.href)) {
-    return Effect.fail(new PeerLinkError({
-      reason: "unreachable",
-      message: "Use a private LAN address for the linked environment.",
-    }));
+    return Effect.fail(
+      new PeerLinkError({
+        reason: "unreachable",
+        message: "Use a private LAN address for the linked environment.",
+      }),
+    );
   }
   return Effect.succeed(parsed.origin);
 };

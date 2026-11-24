@@ -108,7 +108,7 @@ function bearerConnectionId(environmentId: EnvironmentId, httpBaseUrl: string): 
   return `bearer:${environmentId}:${new URL(httpBaseUrl).origin}`;
 }
 
-export function lanAddressRequired() {
+function lanAddressRequired() {
   return new ConnectionBlockedError({
     reason: "configuration",
     ...translatableDetail(msg("Use a private LAN address to connect to this environment.")),

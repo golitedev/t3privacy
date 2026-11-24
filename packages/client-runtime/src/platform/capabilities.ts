@@ -33,13 +33,6 @@ export class CloudSession extends Context.Service<
   }
 >()("@t3tools/client-runtime/platform/capabilities/CloudSession") {}
 
-export class RelayDeviceIdentity extends Context.Service<
-  RelayDeviceIdentity,
-  {
-    readonly deviceId: Effect.Effect<Option.Option<string>, ConnectionAttemptError>;
-  }
->()("@t3tools/client-runtime/platform/capabilities/RelayDeviceIdentity") {}
-
 /**
  * A random id this client keeps across launches. Environments it connects to
  * record its hash, so two environments opened from one device share an owner

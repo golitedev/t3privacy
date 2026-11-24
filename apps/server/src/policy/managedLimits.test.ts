@@ -2,7 +2,6 @@ import type { ManagedPolicyDocument } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-
 import * as EnvironmentAuthPolicy from "../auth/EnvironmentAuthPolicy.ts";
 import * as ManagedLimits from "./managedLimits.ts";
 
@@ -88,6 +87,5 @@ it.effect("allows the clients the policy lists", () =>
   ManagedLimits.checkServerReachability(policy({ clients: ["remote"] }), {
     authPolicy: "remote-reachable",
     host: "0.0.0.0",
-    tailscaleServeEnabled: true,
   }),
 );

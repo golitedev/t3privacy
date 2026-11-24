@@ -549,7 +549,7 @@ describe("server state projection", () => {
             ) as typeof observability;
             for (const next of [
               { ...CONFIG, observability: reordered },
-              { ...CONFIG, observability: { ...reordered, otlpTracesUrl: undefined } },
+              { ...CONFIG, observability: { ...reordered } },
               { ...CONFIG, observability: { ...observability } },
             ]) {
               const encode = Schema.encodeEffect(Schema.fromJsonString(ServerObservability));
@@ -565,7 +565,10 @@ describe("server state projection", () => {
             const changed = yield* h.send(
               snapshotEvent({
                 ...CONFIG,
-                observability: { ...observability, otlpTracesUrl: "https://traces.example.test" },
+                observability: {
+                  ...observability,
+                  localTracingEnabled: !observability.localTracingEnabled,
+                },
               }),
             );
             yield* TestClock.adjust("10 seconds");

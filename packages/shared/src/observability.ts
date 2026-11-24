@@ -13,14 +13,12 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Tracer from "effect/Tracer";
-import { OtlpResource, OtlpTracer, OtlpSerialization } from "effect/observability";
+import { OtlpResource, OtlpTracer } from "effect/observability";
 
 import { makeAsyncRotatingFileSink } from "./logging.ts";
 
 export const OtlpProtocol = Schema.Literals(["http/json", "http/protobuf"]);
 export type OtlpProtocol = typeof OtlpProtocol.Type;
-export const layerOtlpSerialization = (protocol: OtlpProtocol) =>
-  protocol === "http/protobuf" ? OtlpSerialization.layerProtobuf : OtlpSerialization.layerJson;
 
 export interface SignalExport {
   readonly protocol: OtlpProtocol;
@@ -28,18 +26,6 @@ export interface SignalExport {
   readonly exportIntervalMs: number;
 }
 
-/**
- * `process.runtime.*` resource attributes for a Node process, matching the
- * OpenTelemetry Node process detector. Electron embeds Node, so an Electron
- * process reports Node and names Electron in the description.
- */
-export const nodeProcessRuntimeAttributes = (): Record<string, string> => ({
-  "process.runtime.name": "nodejs",
-  "process.runtime.version": process.versions.node,
-  "process.runtime.description": process.versions.electron
-    ? `Electron ${process.versions.electron}`
-    : "Node.js",
-});
 let generatedServiceInstanceId: string | undefined;
 
 /**
@@ -53,12 +39,6 @@ export const processServiceInstanceId = (
   // @effect-diagnostics-next-line cryptoRandomUUID:off -- Resources are built synchronously, outside any Effect.
   generatedServiceInstanceId ??= crypto.randomUUID();
   return generatedServiceInstanceId;
-};
-
-export const DEFAULT_SIGNAL_EXPORT: SignalExport = {
-  protocol: "http/json",
-  headers: undefined,
-  exportIntervalMs: 10_000,
 };
 
 const FLUSH_BUFFER_THRESHOLD = 256;

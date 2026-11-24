@@ -11,13 +11,10 @@ export interface DpopProofInput {
   readonly accessToken?: string;
 }
 
-export class DpopKeyLoadError extends Schema.TaggedError<DpopKeyLoadError>()(
-  "DpopKeyLoadError",
-  {
-    keyStore: Schema.Literals(["expo-secure-store", "indexed-db"]),
-    cause: Schema.Defect(),
-  },
-) {
+export class DpopKeyLoadError extends Schema.TaggedError<DpopKeyLoadError>()("DpopKeyLoadError", {
+  keyStore: Schema.Literals(["expo-secure-store", "indexed-db"]),
+  cause: Schema.Defect(),
+}) {
   override get message(): string {
     return markedTextEnglish(this.i18nMessage);
   }
@@ -40,19 +37,13 @@ export class DpopProofCreationError extends Schema.TaggedError<DpopProofCreation
   }
 }
 
-export const DpopSignerError = Schema.Union([
-  DpopKeyLoadError,
-  DpopProofCreationError,
-]);
+export const DpopSignerError = Schema.Union([DpopKeyLoadError, DpopProofCreationError]);
 export type DpopSignerError = typeof DpopSignerError.Type;
 
 export class DpopSigner extends Context.Service<
   DpopSigner,
   {
     readonly thumbprint: Effect.Effect<string, DpopKeyLoadError>;
-    readonly createProof: (
-      input: DpopProofInput,
-    ) => Effect.Effect<string, DpopProofCreationError>;
+    readonly createProof: (input: DpopProofInput) => Effect.Effect<string, DpopProofCreationError>;
   }
->()("@t3tools/client-runtime/authorization/DpopSigner") {}
-
+>()("@t3tools/client-runtime/relay/dpopSigner") {}

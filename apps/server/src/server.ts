@@ -22,6 +22,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -298,6 +299,13 @@ const layerResourceDiagnostics = Layer.mergeAll(
 // NodeServices and NodeHttpServer each output Node's own spawner, so each is followed by this one.
 const layerSpawner = SpawnWorker.layerServer.pipe(Layer.provide(NodeServices.layer));
 
+class InvalidBindAddressError extends Schema.TaggedError<InvalidBindAddressError>()(
+  "InvalidBindAddressError",
+  {
+    message: Schema.String,
+  },
+) {}
+
 const layerHttpServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -309,7 +317,9 @@ const layerHttpServer = Layer.unwrap(
       privateNetworkOnly: config.privateNetworkOnly,
     });
     if (bindHost !== "localhost" && !isWildcardHost(bindHost) && !isLanAddress(bindHost)) {
-      return yield* Effect.fail(new Error("Bind the server to loopback or a private LAN address."));
+      return yield* new InvalidBindAddressError({
+        message: "Bind the server to loopback or a private LAN address.",
+      });
     }
     const runSync = Effect.runSyncWith(yield* Effect.context<never>());
     return NodeHttpServer.layer(
@@ -731,11 +741,8 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(CodexManagedTokenBroker.layer),
   Layer.provideMerge(layerServerEnvironment),
   Layer.provideMerge(layerAuth),
-  Layer.provideMerge(
-    Layer.mergeAll(AssetSigner.layer, WorkspacePreviewRevisions.layer),
-  ),
+  Layer.provideMerge(Layer.mergeAll(AssetSigner.layer, WorkspacePreviewRevisions.layer)),
   Layer.provideMerge(ServerSecretStore.layer),
-
 );
 
 const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
@@ -905,10 +912,7 @@ const layerMakeServer = Layer.unwrap(
       activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
       abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
       awaitAuxiliaryParked: Effect.all(
-        [
-          Deferred.await(runtimeStateParked),
-          Deferred.await(routesReady),
-        ],
+        [Deferred.await(runtimeStateParked), Deferred.await(routesReady)],
         { concurrency: "unbounded" },
       ).pipe(Effect.asVoid),
     }).pipe(Layer.provideMerge(layerRuntimeDependencies), Layer.provide(layerLauncher));

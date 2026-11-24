@@ -112,7 +112,7 @@ const fetchDescriptor = Effect.fn("clientRuntime.connection.remote.fetchDescript
   }).pipe(Effect.mapError((error) => mapRemoteEnvironmentError(error, connectionMethod)));
 });
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const signer = yield* Dpop.DpopSigner;
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;

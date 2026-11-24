@@ -616,33 +616,6 @@ export const RelayProtectedError = Schema.Union([
 ]);
 export type RelayProtectedError = typeof RelayProtectedError.Type;
 
-const RelayAuthAndInternalErrors = [RelayAuthInvalidError, RelayInternalError] as const;
-
-const RelayEnvironmentLinkErrors = [
-  RelayAuthInvalidError,
-  RelayEnvironmentLinkProofExpiredError,
-  RelayEnvironmentLinkProofInvalidError,
-  RelayEnvironmentLinkUnavailableError,
-  RelayEnvironmentLinkLimitExceededError,
-  RelayEnvironmentLinkFailedError,
-  RelayInternalError,
-] as const;
-
-const RelayEnvironmentConnectErrors = [
-  RelayAuthInvalidError,
-  RelayEnvironmentConnectNotAuthorizedError,
-  RelayEnvironmentEndpointUnavailableError,
-  RelayEnvironmentEndpointTimedOutError,
-  RelayInternalError,
-] as const;
-
-const RelayAgentActivityPublishErrors = [
-  RelayAuthInvalidError,
-  RelayAgentActivityPublishProofExpiredError,
-  RelayAgentActivityPublishProofInvalidError,
-  RelayInternalError,
-] as const;
-
 export const RelayClientEnvironmentRecord = Schema.Struct({
   environmentId: EnvironmentId,
   label: TrimmedNonEmptyString,
@@ -675,9 +648,9 @@ export const RelayEnvironmentConnectRequest = Schema.Struct({
 }).annotate({ description: "Requests a short-lived credential for connecting to an environment." });
 export type RelayEnvironmentConnectRequest = typeof RelayEnvironmentConnectRequest.Type;
 
-export const RelayEnvironmentConnectScope = "environment:connect" as const;
-export const RelayEnvironmentStatusScope = "environment:status" as const;
-export const RelayMobileRegistrationScope = "mobile:registration" as const;
+const RelayEnvironmentConnectScope = "environment:connect" as const;
+const RelayEnvironmentStatusScope = "environment:status" as const;
+const RelayMobileRegistrationScope = "mobile:registration" as const;
 export const RelayDpopAccessTokenScope = Schema.Literals([
   RelayEnvironmentConnectScope,
   RelayEnvironmentStatusScope,
@@ -685,14 +658,11 @@ export const RelayDpopAccessTokenScope = Schema.Literals([
 ]);
 export type RelayDpopAccessTokenScope = typeof RelayDpopAccessTokenScope.Type;
 
-export const RelayDpopTokenExchangeGrantType =
-  "urn:ietf:params:oauth:grant-type:token-exchange" as const;
-export const RelayJwtSubjectTokenType = "urn:ietf:params:oauth:token-type:jwt" as const;
-export const RelayAccessTokenType = "urn:ietf:params:oauth:token-type:access_token" as const;
+const RelayDpopTokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange" as const;
+const RelayJwtSubjectTokenType = "urn:ietf:params:oauth:token-type:jwt" as const;
+const RelayAccessTokenType = "urn:ietf:params:oauth:token-type:access_token" as const;
 export const RelayPublicClientId = Schema.Literals(["t3-mobile", "t3-web"]);
 export type RelayPublicClientId = typeof RelayPublicClientId.Type;
-export const RelayMobileClientId = "t3-mobile" as const;
-export const RelayWebClientId = "t3-web" as const;
 
 export const RelayDpopAccessTokenRequest = Schema.Struct({
   grant_type: Schema.Literal(RelayDpopTokenExchangeGrantType),
@@ -896,11 +866,6 @@ export type RelayOkResponse = typeof RelayOkResponse.Type;
 
 export const RelayT3ChatPlan = Schema.Literals(["free", "pro", "premier"]);
 export type RelayT3ChatPlan = typeof RelayT3ChatPlan.Type;
-
-export const DEFAULT_MANAGED_TUNNEL_LIMIT = 3;
-
-// A linked paid T3 Chat plan raises the default managed tunnel cap.
-export const T3CHAT_PLAN_TUNNEL_LIMITS = { pro: 10, premier: 100 } as const;
 
 export const RelayT3ChatLink = Schema.Struct({
   email: Schema.String,

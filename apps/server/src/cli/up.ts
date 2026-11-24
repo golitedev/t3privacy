@@ -2,13 +2,17 @@ import * as Config from "effect/Config";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { Command, Flag, GlobalFlag } from "effect/cli";
 
 import * as BootService from "../cloud/bootService.ts";
 import * as ServerConfig from "../config.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 import * as CliService from "./service.ts";
+
+const encodeStatus = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export const upCommand = Command.make("up", {
   ...projectLocationFlags,
@@ -30,11 +34,10 @@ export const upCommand = Command.make("up", {
         const service = yield* CliService.reconcileService();
         if (!service.changed) yield* (yield* BootService.BootService).restart;
         return service;
-      }).pipe(
-        Effect.provide(CliService.layer(config)),
-        Effect.provide(ServerConfig.layer(config)),
+      }).pipe(Effect.provide(Layer.mergeAll(CliService.layer(config), ServerConfig.layer(config))));
+      yield* Console.log(
+        status.changed ? CliService.formatServiceChange(status) : "Service started.",
       );
-      yield* Console.log(status.changed ? CliService.formatServiceChange(status) : "Service started.");
       yield* Console.log("Run t3 pair to connect a device.");
     }),
   ),
@@ -60,9 +63,12 @@ export const statusCommand = Command.make("status", {
         .parse(ConfigProvider.fromEnv({ env: entries }));
       const enabled = Option.getOrElse(lan, () => service.installed && !service.otherBaseDir);
       if (flags.json) {
-        yield* Console.log(JSON.stringify({ service, lan: { enabled } }, null, 2));
+        const json = yield* encodeStatus({ service, lan: { enabled } });
+        yield* Console.log(json);
       } else {
-        yield* Console.log(`Background service: ${service.installed ? "installed" : "not installed"}`);
+        yield* Console.log(
+          `Background service: ${service.installed ? "installed" : "not installed"}`,
+        );
         yield* Console.log(`LAN access: ${enabled ? "enabled" : "disabled"}`);
       }
     }),

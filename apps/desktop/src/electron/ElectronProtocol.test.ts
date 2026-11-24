@@ -41,7 +41,6 @@ describe("ElectronProtocol", () => {
       yield* protocol.registerDesktopProtocol({
         scheme: "t3code",
         assetDirectory: directory,
-        clerkFrontendApiHostname: undefined,
       });
       const request = (pathname: string, init?: RequestInit) =>
         Effect.promise(() => handler!(new Request(`t3code://app${pathname}`, init)));
@@ -80,7 +79,6 @@ describe("ElectronProtocol", () => {
           yield* protocol.registerDesktopProtocol({
             scheme: "t3code-dev",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
-            clerkFrontendApiHostname: "clerk.t3.codes",
           });
           assert.isDefined(handler);
 
@@ -97,9 +95,17 @@ describe("ElectronProtocol", () => {
             ),
           );
           assert.equal(yield* Effect.promise(() => response.text()), "ok");
+          assert.notInclude(
+            response.headers.get("content-security-policy") ?? "",
+            "clerk.t3.codes",
+          );
+          assert.notInclude(
+            response.headers.get("content-security-policy") ?? "",
+            "challenges.cloudflare.com",
+          );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://clerk.t3.codes https://challenges.cloudflare.com",
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
@@ -144,7 +150,6 @@ describe("ElectronProtocol", () => {
           yield* protocol.registerDesktopProtocol({
             scheme: "t3code-dev",
             targetOrigin: new URL("http://127.0.0.1:5733/"),
-            clerkFrontendApiHostname: undefined,
           });
           yield* Effect.promise(() =>
             handler!(new Request("t3code-dev://app//example.com/src/main.tsx?t=1")),
@@ -176,7 +181,6 @@ describe("ElectronProtocol", () => {
           yield* protocol.registerDesktopProtocol({
             scheme: "t3code",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
-            clerkFrontendApiHostname: undefined,
           });
           return yield* Effect.promise(() => handler!(new Request("t3code://other/")));
         }),

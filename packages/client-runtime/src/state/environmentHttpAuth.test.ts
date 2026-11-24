@@ -27,7 +27,7 @@ import { AsyncResult } from "effect/reactivity";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import {
   ConnectionTransientError,
-  RelayConnectionTarget,
+  BearerConnectionTarget,
   type PreparedConnection,
   type PreparedHttpAuthorization,
 } from "../connection/model.ts";
@@ -47,20 +47,26 @@ import { v2Projection } from "./orchestrationV2TestFixtures.ts";
 const encodeBoundedSnapshot = Schema.encodeSync(OrchestrationV2ThreadBoundedSnapshot);
 const encodeThreadTranscript = Schema.encodeSync(OrchestrationV2ThreadTranscript);
 
-const TARGET = new RelayConnectionTarget({
+const TARGET = new BearerConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
   label: "Remote environment",
+  connectionId: "direct-1",
 });
 const PREPARED: PreparedConnection = {
   environmentId: TARGET.environmentId,
   label: TARGET.label,
-  httpBaseUrl: "https://previous.example.test",
+  httpBaseUrl: "https://current.example.test",
   socketUrl: "wss://previous.example.test/ws",
-  httpAuthorization: { _tag: "Dpop", accessToken: "expired-token", expiresAtEpochMs: 0 },
+  httpAuthorization: {
+    _tag: "Dpop",
+    accessToken: "expired-token",
+    expiresAtEpochMs: 0,
+    directConnection: { connectionId: "direct-1", httpBaseUrl: "https://current.example.test" },
+  },
   target: TARGET,
 };
 const CURRENT_ORIGIN = "https://current.example.test";
-const RENEWED_ORIGIN = "https://renewed.example.test";
+const RENEWED_ORIGIN = CURRENT_ORIGIN;
 const DIFF = {
   projectId: ProjectId.make("project-1"),
   repository: "owner/repository",
@@ -124,30 +130,26 @@ function credentialRejectedResponse(reason = "invalid_credential") {
 
 function makeHarness(reply: (requestNumber: number) => Response | Promise<Response>) {
   const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
-  const authorizations: Array<
-    Parameters<
-      RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]["authorizeDpopHttp"]
-    >[0]
-  > = [];
-  const proofs: Array<ManagedRelay.DpopProofInput> = [];
+  const authorizations: Array<{
+    readonly expectedEnvironmentId: EnvironmentId;
+    readonly rejectedAccessToken?: string;
+  }> = [];
+  const proofs: Array<Parameters<Dpop.DpopSigner["Service"]["createProof"]>[0]> = [];
   const remoteAuthorization = RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.of({
     authorizeBearer: () => Effect.die("Unexpected bearer connection preparation."),
-    authorizeDpop: () => Effect.die("HTTP requests must not prepare a WebSocket connection."),
     authorizeDirectDpop: () => Effect.die("HTTP requests must not prepare a WebSocket connection."),
-    authorizeDirectDpopHttp: () => Effect.die("Unexpected direct DPoP authorization."),
-    authorizeDpopHttp: (input) =>
+    authorizeDirectDpopHttp: (connection, rejectedAccessToken) =>
       Effect.sync(() => {
-        authorizations.push(input);
-        const rejected = input.rejectedAccessToken !== undefined;
+        expect(connection).toEqual({ connectionId: "direct-1", httpBaseUrl: CURRENT_ORIGIN });
+        authorizations.push({
+          expectedEnvironmentId: TARGET.environmentId,
+          ...(rejectedAccessToken === undefined ? {} : { rejectedAccessToken }),
+        });
         return {
-          environmentId: TARGET.environmentId,
-          label: TARGET.label,
-          httpBaseUrl: rejected ? RENEWED_ORIGIN : CURRENT_ORIGIN,
-          httpAuthorization: {
-            _tag: "Dpop" as const,
-            accessToken: rejected ? "renewed-token" : "current-token",
-            expiresAtEpochMs: 3_600_000,
-          },
+          _tag: "Dpop" as const,
+          accessToken: rejectedAccessToken === undefined ? "current-token" : "renewed-token",
+          expiresAtEpochMs: 3_600_000,
+          directConnection: connection,
         };
       }),
     rememberCheckedDescriptor: () => Effect.void,
@@ -368,39 +370,41 @@ describe("authenticated environment HTTP requests", () => {
       }),
   );
 
-  it.effect("retries a rejected diff once with a new token, endpoint, and proof", () =>
-    Effect.gen(function* () {
-      const harness = makeHarness((requestNumber) =>
-        requestNumber === 1 ? credentialRejectedResponse() : Response.json(DIFF_RESULT),
-      );
-      const result = yield* PullRequestDiffLoader.fetchEnvironmentPullRequestDiff({
-        ...harness.input,
-        diff: DIFF,
-      }).pipe(Effect.provide(harness.httpLayer));
+  it.effect(
+    "retries a rejected diff once with a new token and proof at the same direct address",
+    () =>
+      Effect.gen(function* () {
+        const harness = makeHarness((requestNumber) =>
+          requestNumber === 1 ? credentialRejectedResponse() : Response.json(DIFF_RESULT),
+        );
+        const result = yield* PullRequestDiffLoader.fetchEnvironmentPullRequestDiff({
+          ...harness.input,
+          diff: DIFF,
+        }).pipe(Effect.provide(harness.httpLayer));
 
-      expect(result).toEqual(DIFF_RESULT);
-      expect(harness.authorizations).toEqual([
-        { expectedEnvironmentId: TARGET.environmentId },
-        { expectedEnvironmentId: TARGET.environmentId, rejectedAccessToken: "current-token" },
-      ]);
-      expect(harness.calls.map((call) => call.url)).toEqual([
-        `${CURRENT_ORIGIN}/api/pull-requests/diff`,
-        `${RENEWED_ORIGIN}/api/pull-requests/diff`,
-      ]);
-      expect(
-        harness.calls.map((call) => new Headers(call.init.headers).get("authorization")),
-      ).toEqual(["DPoP current-token", "DPoP renewed-token"]);
-      expect(harness.calls.map((call) => new Headers(call.init.headers).get("dpop"))).toEqual([
-        "proof-1",
-        "proof-2",
-      ]);
-      expect(harness.proofs[1]).toEqual({
-        method: "POST",
-        url: `${RENEWED_ORIGIN}/api/pull-requests/diff`,
-        accessToken: "renewed-token",
-      });
-      expect(harness.calls[1]!.init.body).toEqual(harness.calls[0]!.init.body);
-    }),
+        expect(result).toEqual(DIFF_RESULT);
+        expect(harness.authorizations).toEqual([
+          { expectedEnvironmentId: TARGET.environmentId },
+          { expectedEnvironmentId: TARGET.environmentId, rejectedAccessToken: "current-token" },
+        ]);
+        expect(harness.calls.map((call) => call.url)).toEqual([
+          `${CURRENT_ORIGIN}/api/pull-requests/diff`,
+          `${RENEWED_ORIGIN}/api/pull-requests/diff`,
+        ]);
+        expect(
+          harness.calls.map((call) => new Headers(call.init.headers).get("authorization")),
+        ).toEqual(["DPoP current-token", "DPoP renewed-token"]);
+        expect(harness.calls.map((call) => new Headers(call.init.headers).get("dpop"))).toEqual([
+          "proof-1",
+          "proof-2",
+        ]);
+        expect(harness.proofs[1]).toEqual({
+          method: "POST",
+          url: `${RENEWED_ORIGIN}/api/pull-requests/diff`,
+          accessToken: "renewed-token",
+        });
+        expect(harness.calls[1]!.init.body).toEqual(harness.calls[0]!.init.body);
+      }),
   );
 
   it.effect("renews credentials captured by the bounded snapshot loader", () =>
@@ -414,10 +418,7 @@ describe("authenticated environment HTTP requests", () => {
         Layer.provide(
           Layer.mergeAll(
             harness.httpLayer,
-            Layer.succeed(
-              Dpop.DpopSigner,
-              Option.getOrThrow(harness.input.signer),
-            ),
+            Layer.succeed(Dpop.DpopSigner, Option.getOrThrow(harness.input.signer)),
             Layer.succeed(
               RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
               harness.remoteAuthorization,
@@ -639,7 +640,7 @@ describe("authenticated environment HTTP requests", () => {
       });
       const remoteAuthorization = RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.of({
         ...harness.remoteAuthorization,
-        authorizeDpopHttp: () => Effect.fail(failure),
+        authorizeDirectDpopHttp: () => Effect.fail(failure),
       });
       const error = yield* fetchEnvironmentSessionState({
         ...harness.input,
@@ -666,7 +667,7 @@ describe("authenticated environment HTTP requests", () => {
 
       expect(error).toMatchObject({
         _tag: "RemoteEnvironmentAuthFetchError",
-        message: "No relay authorization service is available for the environment request.",
+        message: "No authorization service is available for the environment request.",
       });
       expect(harness.calls).toEqual([]);
     }),

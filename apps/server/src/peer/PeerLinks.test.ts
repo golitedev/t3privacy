@@ -717,7 +717,7 @@ it.effect("tells the agent to link again once the peer revokes the link or it ex
 );
 
 it.effect(
-  "refuses to link itself, plain http off this machine and the tailnet, or a peer that cannot hold a linked agent to its limits",
+  "refuses to link itself, public addresses, or a peer that cannot enforce linked-agent limits",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -737,24 +737,24 @@ it.effect(
           .pipe(Effect.flip);
         expect(unfenced.reason).toBe("incompatible");
 
-        // Plain http to a LAN address would carry the code and token in clear.
+        // Public addresses are refused before a pairing credential can leave the LAN.
         const lan = yield* a.links
           .link({
-            url: "http://192.168.1.20:3773",
+            url: "http://203.0.113.20:3773",
             pairingCode: pairing.credential,
             access: "auto",
           })
           .pipe(Effect.flip);
-        expect(lan.message).toContain("plain http");
+        expect(lan.message).toContain("private LAN address");
         const lanAlternate = yield* a.links
           .link({
             url: b.url,
-            alternateUrls: ["http://192.168.1.20:3773"],
+            alternateUrls: ["http://203.0.113.20:3773"],
             pairingCode: pairing.credential,
             access: "auto",
           })
           .pipe(Effect.flip);
-        expect(lanAlternate.message).toContain("plain http");
+        expect(lanAlternate.message).toContain("private LAN address");
 
         yield* Ref.set(b.descriptor, laptop);
         const self = yield* a.links
@@ -825,7 +825,7 @@ it.effect("linking a picked machine that answers nowhere names it and links noth
       const failed = yield* a.links
         .link({
           url: impostor.url,
-          alternateUrls: ["http://192.168.1.20:3773"],
+          alternateUrls: ["http://203.0.113.20:3773"],
           pairingCode: "unused",
           access: "auto",
           expectedEnvironmentId: box.environmentId,
@@ -835,7 +835,7 @@ it.effect("linking a picked machine that answers nowhere names it and links noth
       expect(failed.reason).toBe("unreachable");
       expect(failed.answeredAs).toBe("Impostor");
       expect(failed.message).toBe(
-        `This environment could not reach Box: ${new URL(impostor.url).origin} answered as another environment, Impostor. http://192.168.1.20:3773 is plain http, which would send the link's credentials unencrypted. Use its https address, or its Tailscale address.`,
+        `This environment could not reach Box: ${new URL(impostor.url).origin} answered as another environment, Impostor. Use a private LAN address for the linked environment.`,
       );
       expect(yield* a.links.list).toEqual([]);
       expect(yield* linkedSessions(impostor)).toEqual([]);
@@ -843,7 +843,7 @@ it.effect("linking a picked machine that answers nowhere names it and links noth
       // Every address refused: the message says why.
       const refused = yield* a.links
         .link({
-          url: "http://192.168.1.20:3773",
+          url: "http://203.0.113.20:3773",
           pairingCode: "unused",
           access: "auto",
           expectedEnvironmentId: box.environmentId,
@@ -851,7 +851,7 @@ it.effect("linking a picked machine that answers nowhere names it and links noth
         })
         .pipe(Effect.flip);
       expect(refused.message).toContain("could not reach Box");
-      expect(refused.message).toContain("plain http");
+      expect(refused.message).toContain("private LAN address");
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

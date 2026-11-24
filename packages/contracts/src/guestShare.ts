@@ -9,13 +9,6 @@ import {
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas.ts";
-
-/**
- * A guest share lets one unauthenticated browser watch a thread over T3 Connect and propose
- * messages the owner must send or dismiss. The thread projection holds this public state; the
- * credentials are derived from the share id with a server key and never stored.
- */
-export const GUEST_SHARE_TTL_MS = 24 * 60 * 60 * 1000;
 export const GUEST_MESSAGE_MAX_LENGTH = 4_000;
 export const GUEST_NAME_MAX_LENGTH = 40;
 export const GUEST_PENDING_MESSAGE_LIMIT = 3;
@@ -119,12 +112,6 @@ export type GuestSubmitRequest = typeof GuestSubmitRequest.Type;
 export const GUEST_ROUTE_PREFIX = "/api/guest";
 /** The guest page and guest routes name the share they mean with this query parameter. */
 export const GUEST_SHARE_PARAM = "share";
-
-/**
- * One session cookie per share, so a guest keeps every link they joined on a host, and a page
- * for one share never acts with another share's session.
- */
-export const guestSessionCookieName = (shareId: string) => `t3_guest_${shareId}`;
 /** Serves one HTML render in the shared thread: `?share=<share id>&item=<turn item id>`. */
 export const GUEST_RENDER_ROUTE = `${GUEST_ROUTE_PREFIX}/render`;
 /** One item of the shared thread, as an expanded row loads it: `?share=<share id>&item=<id>`. */

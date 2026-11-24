@@ -71,7 +71,10 @@ export function resolveBoundEndpoints(input: {
         .map((entry) => entry.address)
     : [input.host!].filter(
         (address) =>
-          isAdvertisableAddress(address) || (NodeNet.isIPv6(address) && isPrivateNetworkAddress(address)),
+          isAdvertisableAddress(address) ||
+          (NodeNet.isIPv6(address) &&
+            !address.toLowerCase().startsWith("::ffff:") &&
+            isPrivateNetworkAddress(address)),
       );
   return [...new Set(addresses)]
     .filter((address) => !input.onCloudVm && !tailscaleAddresses.has(address))
@@ -86,14 +89,16 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const platform = yield* HostProcess.Platform;
-    const resolve = Effect.sync(() =>
-      resolveBoundEndpoints({
-        platform,
-        host: config.host,
-        port: config.port,
-        interfaces: NodeOS.networkInterfaces(),
-      }),
+    const resolve = Effect.fn("DirectEndpoints.resolve")(() =>
+      Effect.sync(() =>
+        resolveBoundEndpoints({
+          platform,
+          host: config.host,
+          port: config.port,
+          interfaces: NodeOS.networkInterfaces(),
+        }),
+      ),
     );
-    return DirectEndpoints.of({ resolveAvailable: () => resolve, resolve: () => resolve });
+    return DirectEndpoints.of({ resolveAvailable: resolve, resolve });
   }),
 );
