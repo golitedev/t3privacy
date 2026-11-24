@@ -115,7 +115,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     # Windows waits for the Linux CLI archive inside its own budget (see
     # "Wait for Linux CLI archive"), so it gets that wait on top of the usual 30.
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.platform == 'win' && 70 || 30 }}
     steps:
       # The launch check and the CLI archive smoke test both run the bundle.
       - name: Reject running an untrusted bundle
@@ -344,6 +344,10 @@ jobs:
       - name: Build CLI single-executable
         if: inputs.cli_archive
         shell: bash
+        env:
+          # The executable bundles the server again, so it needs the same stamp
+          # as release.yml's JS bundle.
+          T3CODE_TELEMETRY_CHANNEL: ${{ github.repository == 'pingdotgg/t3code' && inputs.release_channel || 'dev' }}
         run: node apps/server/scripts/cli.ts build-exe --verbose ${{ inputs.platform == 'win' && format('--target win-{0}', inputs.arch) || '' }}
 
       - name: Import macOS signing certificate for the CLI archive

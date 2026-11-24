@@ -9,7 +9,7 @@
 <p align="center">The open-source control plane for coding agents.</p>
 
 <p align="center">
-  <a href="https://github.com/golitedev/t3privacy/releases/latest"><strong>Download</strong></a> ·
+  <a href="https://t3.codes/download"><strong>Download</strong></a> ·
   <a href="https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824">iOS</a> ·
   <a href="https://play.google.com/store/apps/details?id=com.t3tools.t3code">Android</a> ·
   <a href="https://app.t3.codes">Web</a> ·
@@ -29,51 +29,52 @@ It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kir
 
 ## What you get
 
-This fork removes upstream product telemetry and hosted connectivity. Install this fork's release for the server, web, and desktop apps; build mobile from this
-checkout. Other devices pair directly over the local network. See [LAN access](docs/user/remote-access.md) and
+This fork removes upstream product telemetry and hosted connectivity. Build from this
+checkout to use the fork's server, web, desktop, and mobile apps. Other devices pair
+directly over the local network. See [LAN access](docs/user/remote-access.md) and
 [privacy and diagnostics](docs/user/telemetry.md).
 
 - **Your subscriptions.** T3 Code does not resell tokens. It drives the agents you are already signed in to.
 - **Every agent in one place.** Change models in the middle of a thread. Let Claude hand a task to Codex.
 - **Desktop, web, and phone.** One server, and every client shows the same threads. There are apps for iOS and Android.
-- **LAN access.** Connect directly to your host from another device on your local network. See [remote access](./docs/user/remote-access.md).
+- **Remote ready.** Run agents on any machine. Connect over your local network, Tailscale, or [T3 Connect](./docs/user/remote-access.md).
 - **Git built in.** Each thread can work in its own worktree. Review the diff, then commit, push, and open a pull request with one button.
 - **Fast.** Performance is a feature here. We measure it, and we treat a dropped frame as a bug.
 - **Open.** Source code is MIT licensed. If you don't like something, fork it under your own branding (see [Trademarks and forks](#trademarks-and-forks)).
 
 ## Install
 
-### Stable command line
+### Desktop app
 
-Linux and Apple Silicon macOS:
+[Download T3 Code](https://t3.codes/download) for macOS, Windows, or Linux. You can also use a package manager:
+
+| Platform       | Command                                                              |
+| -------------- | -------------------------------------------------------------------- |
+| macOS          | `brew install --cask t3-code`                                        |
+| Windows        | `winget install T3Tools.T3Code` or `scoop install extras/t3code`     |
+| Arch Linux     | `yay -S t3code-bin`                                                  |
+| Nix            | `nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code`         |
+| Debian, Ubuntu | `.deb` from [Releases](https://github.com/pingdotgg/t3code/releases) |
+
+### Command line
+
+This installs the `t3` command. Run `t3` to start the server and open the web app.
 
 ```bash
-curl -fsSL https://github.com/golitedev/t3privacy/releases/latest/download/install.sh | sh
+curl -fsSL https://t3.codes/install.sh | sh
 ```
 
-Windows PowerShell:
+On Windows, in PowerShell:
 
 ```powershell
-irm https://github.com/golitedev/t3privacy/releases/latest/download/install.ps1 | iex
+irm https://t3.codes/install.ps1 | iex
 ```
 
-These install the latest **stable release of this fork** as `t3`. No Node.js or npm
-is required. Run `t3 serve --lan` on your host and open its pairing URL from your
-other device. Run `t3 update` to install the newest fork release. Existing projects,
-threads, and settings stay under `~/.t3`.
+To try it once without an install, run `npx t3@latest`.
 
-### Desktop and phone
+### Phone
 
-Download this fork's desktop installers from
-[GitHub Releases](https://github.com/golitedev/t3privacy/releases/latest).
-Linux has AppImage and `.deb` packages, macOS has DMGs, and Windows has installers.
-macOS and Windows builds are unsigned unless the maintainer configures signing.
-
-Build the mobile app from this checkout for this fork's LAN-only behavior.
-Upstream installers, npm packages, app-store downloads, and package-manager entries
-install upstream T3 Code, not this fork.
-
-[Installation details](./docs/user/install.md) cover exact versions and nightlies.
+Get the app from the [App Store](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824) or [Google Play](https://play.google.com/store/apps/details?id=com.t3tools.t3code). Then follow [remote access](./docs/user/remote-access.md) to connect it to your computer.
 
 ### Sign in to an agent
 
