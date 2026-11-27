@@ -58,16 +58,27 @@ describe("environment release checks", () => {
   const signal = new AbortController().signal;
   const feed = (...tags: ReadonlyArray<string>) =>
     new Response(
-      `<feed><id>tag:github.com,2008:https://github.com/pingdotgg/t3code/releases</id>${tags
+      `<feed><id>tag:github.com,2008:https://github.com/golitedev/t3privacy/releases</id>${tags
         .map((tag) => `<entry><id>tag:github.com,2008:Repository/1/${tag}</id></entry>`)
         .join("")}</feed>`,
     );
+
+  it("finds a newer Linux fork release from the stable release pointer", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toBe("https://api.github.com/repos/golitedev/t3privacy/releases/latest");
+        return Response.json({ tag_name: "v1.0.0-privacy.2" });
+      }),
+    );
+    expect(await findEnvironmentUpdate("1.0.0-privacy.1", signal)).toBe("1.0.0-privacy.2");
+  });
 
   it("keeps nightly and preview hosts on their channel without using the anonymous API quota", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url === "https://github.com/pingdotgg/t3code/releases.atom"
+        url === "https://github.com/golitedev/t3privacy/releases.atom"
           ? feed(
               "desktop-preview",
               "v1.0.0-preview.20260924.3",
@@ -93,11 +104,16 @@ describe("environment release checks", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "https://github.com/pingdotgg/t3code/releases.atom") return feed(...nightlies);
-        if (url === "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100&page=1") {
+        if (url === "https://github.com/golitedev/t3privacy/releases.atom")
+          return feed(...nightlies);
+        if (
+          url === "https://api.github.com/repos/golitedev/t3privacy/releases?per_page=100&page=1"
+        ) {
           return Response.json(Array.from({ length: 100 }, () => ({ tag_name: "v2.0.0" })));
         }
-        if (url === "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100&page=2") {
+        if (
+          url === "https://api.github.com/repos/golitedev/t3privacy/releases?per_page=100&page=2"
+        ) {
           return Response.json([
             { tag_name: "v1.0.0-preview.20260925.1", draft: true },
             { tag_name: "v1.0.0-preview.20260924.3" },

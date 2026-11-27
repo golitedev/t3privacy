@@ -29,8 +29,8 @@ It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kir
 
 ## What you get
 
-This fork removes upstream product telemetry and hosted connectivity. Build from this
-checkout to use the fork's server, web, desktop, and mobile apps. Other devices pair
+This unofficial fork removes upstream product telemetry and hosted connectivity. Use the
+Linux x64 release or build from source. Other devices pair
 directly over the local network. See [LAN access](docs/user/remote-access.md) and
 [privacy and diagnostics](docs/user/telemetry.md).
 
@@ -58,19 +58,13 @@ directly over the local network. See [LAN access](docs/user/remote-access.md) an
 
 ### Command line
 
-This installs the `t3` command. Run `t3` to start the server and open the web app.
+Install the fork's CLI and web app on Linux x64:
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://github.com/golitedev/t3privacy/releases/latest/download/install.sh | sh
 ```
 
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
-
-To try it once without an install, run `npx t3@latest`.
+Run `t3 serve` to start the server over SSH. See [installation and updates](./docs/user/install.md#command-line).
 
 ### Phone
 

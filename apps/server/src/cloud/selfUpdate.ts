@@ -224,7 +224,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         platform,
         arch,
         releaseBaseUrl,
-        requirePublishedRelease: mirror !== undefined,
+        requirePublishedRelease: true,
         validate: (runtime) =>
           runStagedServicePreflight({
             runner,

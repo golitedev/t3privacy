@@ -58,19 +58,19 @@ it.effect("authenticates each release page until the requested channel is found"
     const httpClient = HttpClient.make((request) => {
       const url = new URL(request.url);
       assert.equal(url.origin, "https://api.github.com");
-      assert.equal(url.pathname, "/repos/pingdotgg/t3code/releases");
+      assert.equal(url.pathname, "/repos/golitedev/t3privacy/releases");
       assert.equal(request.headers.accept, "application/vnd.github+json");
       assert.equal(request.headers.authorization, "Bearer gh-token");
       const page = url.searchParams.get("page") ?? "";
       pages.push(page);
-      const tag_name = page === "1" ? "v1.2.4-preview.20260101.1" : "v1.2.3";
+      const tag_name = page === "1" ? "v1.2.4-preview.20260101.1" : "v1.2.3-privacy.1";
       return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json([{ tag_name }])));
     });
     const version = yield* resolveNewestVersion("stable").pipe(
       Effect.provideService(HostProcess.Environment, { GH_TOKEN: "gh-token" }),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
-    assert.equal(version, "1.2.3");
+    assert.equal(version, "1.2.3-privacy.1");
     assert.deepStrictEqual(pages, ["1", "2"]);
   }),
 );
@@ -562,6 +562,17 @@ const withoutTerminals = Effect.acquireRelease(
     }),
 );
 
+const releaseChecksums = (version: string, published = true) =>
+  HttpClient.make((request) => {
+    assert.equal(
+      request.url,
+      `https://github.com/golitedev/t3privacy/releases/download/v${version}/SHA256SUMS`,
+    );
+    const checksum = `${"a".repeat(64)}  t3-${version}-linux-x64.tar.gz\n`;
+    const response = published ? new Response(checksum) : new Response(null, { status: 404 });
+    return Effect.succeed(HttpClientResponse.fromWeb(request, response));
+  });
+
 it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
   it.effect("names the version a service with a pending restart still runs", () =>
     Effect.gen(function* () {
@@ -624,10 +635,7 @@ it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
             service,
             Layer.succeed(ProcessRunner.ProcessRunner, runner),
             ManagedPolicy.layerTest(),
-            Layer.succeed(
-              HttpClient.HttpClient,
-              HttpClient.make(() => Effect.die("unexpected release lookup")),
-            ),
+            Layer.succeed(HttpClient.HttpClient, releaseChecksums(version)),
             Layer.fresh(TestConsole.layer),
           ),
         ),
@@ -639,6 +647,7 @@ it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
       );
     }).pipe(
       Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Architecture, "x64"),
       Effect.provideService(HostProcess.Environment, { PATH: "" }),
     ),
   );
@@ -658,6 +667,14 @@ it.layer(NodeServices.layer)("t3 update checks the database before switching", (
   const blockedReason = "This database has migrations that t3@0.1.8 does not know: 79_example.";
 
   it.effect.each([
+    {
+      name: "refuses a cached runtime missing from the fork’s releases",
+      targetVersion: "0.1.8",
+      launcherProtocol: 3,
+      preflight: preflightOutput(""),
+      unpublished: true,
+      failure: "No release archive was published for t3@0.1.8.",
+    },
     {
       name: "installs an older target that accepts this database",
       targetVersion: "0.1.8",
@@ -698,7 +715,7 @@ it.layer(NodeServices.layer)("t3 update checks the database before switching", (
       ),
       failure: undefined,
     },
-  ])("$name", ({ targetVersion, launcherProtocol, preflight, failure }) =>
+  ])("$name", ({ targetVersion, launcherProtocol, preflight, failure, unpublished }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -749,7 +766,7 @@ it.layer(NodeServices.layer)("t3 update checks the database before switching", (
             ManagedPolicy.layerTest(),
             Layer.succeed(
               HttpClient.HttpClient,
-              HttpClient.make(() => Effect.die("unexpected release lookup")),
+              releaseChecksums(targetVersion, unpublished !== true),
             ),
             Layer.fresh(TestConsole.layer),
           ),
@@ -759,17 +776,23 @@ it.layer(NodeServices.layer)("t3 update checks the database before switching", (
       const error = Option.getOrUndefined(Exit.findErrorOption(exit));
       assert.equal(error?.message, failure);
       assert.equal(Exit.isSuccess(exit), failure === undefined);
-      assert.deepEqual(preflightArgs, [
-        [
-          "__service-preflight",
-          "--database-path",
-          databasePath,
-          "--launcher-protocol",
-          String(launcherProtocol),
-        ],
-      ]);
+      assert.deepEqual(
+        preflightArgs,
+        unpublished
+          ? []
+          : [
+              [
+                "__service-preflight",
+                "--database-path",
+                databasePath,
+                "--launcher-protocol",
+                String(launcherProtocol),
+              ],
+            ],
+      );
     }).pipe(
       Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Architecture, "x64"),
       Effect.provideService(HostProcess.Environment, { PATH: "" }),
     ),
   );

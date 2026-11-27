@@ -506,7 +506,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     platform,
     arch,
     releaseBaseUrl: mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined),
-    requirePublishedRelease: mirror !== undefined,
+    requirePublishedRelease: true,
     validate: (runtime) =>
       runStagedServicePreflight({
         runner,

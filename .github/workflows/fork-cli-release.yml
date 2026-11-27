@@ -1,0 +1,108 @@
+name: Fork CLI release
+
+on:
+  push:
+    tags:
+      - "v*-privacy.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'golitedev/t3privacy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Validate release tag
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-privacy\.[1-9][0-9]*$ ]]; then
+            echo "Expected a release tag of the form vX.Y.Z-privacy.N." >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --frozen-lockfile --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Install Linux archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatomic1 patchelf
+
+      - name: Build the standalone CLI and web app
+        run: |
+          node scripts/update-release-package-versions.ts "$RELEASE_VERSION"
+          vp run --filter t3 build
+          node apps/server/scripts/cli.ts build-exe
+
+      - name: Package and smoke-test the Linux x64 archive
+        run: |
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml \
+            --target x86_64-unknown-linux-gnu
+          mkdir -p apps/server/dist/resource-monitor/linux-x64
+          cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor \
+            apps/server/dist/resource-monitor/linux-x64/
+          node scripts/build-cli-archive.ts --platform linux --arch x64 \
+            --version "$RELEASE_VERSION" --output-dir release-assets
+          node scripts/smoke-cli-archive.ts \
+            --archive "release-assets/t3-$RELEASE_VERSION-linux-x64.tar.gz" \
+            --expect-version "$RELEASE_VERSION"
+
+      - name: Prepare installer, metadata, and checksums
+        run: |
+          cp scripts/install.sh release-assets/
+          node --input-type=module - "$RELEASE_VERSION" > release-assets/release.json <<'JS'
+          import { migrationManifest } from "./apps/server/src/persistence/Migrations.ts";
+          console.log(JSON.stringify({
+            version: process.argv[2],
+            t3code: { databaseMigration: Math.max(...migrationManifest.map(([id]) => id)) },
+          }));
+          JS
+          cd release-assets
+          sha256sum t3-*.tar.gz install.sh release.json > SHA256SUMS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fork-cli-release
+          path: release-assets/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fork-cli-release
+          path: release-assets
+
+      - name: Publish the verified archive
+        run: |
+          sha256sum --check SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --latest \
+            --title "t3privacy $RELEASE_TAG" \
+            --notes 'Standalone Linux x64 CLI and web app from an unofficial fork of the T3 Code source. Install with the attached install.sh.' \
+            ./*.tar.gz SHA256SUMS install.sh release.json
+        working-directory: release-assets

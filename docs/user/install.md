@@ -8,19 +8,18 @@ You need at least one installed, authenticated coding agent (provider) before st
 
 ## Command line
 
-Install the `t3` command to `~/.local/bin`:
+The fork publishes a standalone CLI for Linux x64. Install the latest fork release to `~/.local/bin`:
 
 ```bash
-# macOS / Linux
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://github.com/golitedev/t3privacy/releases/latest/download/install.sh | sh
 ```
 
-```powershell
-# Windows (PowerShell)
-irm https://t3.codes/install.ps1 | iex
-```
+The installer verifies the archive checksum and keeps your existing T3 data. Set
+`T3CODE_VERSION` to a version such as `0.1.13-privacy.1` to install a specific release.
 
-Set `T3CODE_CHANNEL=nightly` for nightly builds or `T3CODE_VERSION=<ver>` to pin a version. To try once without installing, run `npx t3@latest` (requires Node.js; always runs the latest stable release).
+If you previously set up a source-build launcher at `~/.local/bin/t3`, move that
+launcher aside before running the release installer. Once installed, use `t3 update`
+to switch to a newer fork release.
 
 | Task                          | Command                                                                 |
 | ----------------------------- | ----------------------------------------------------------------------- |
@@ -34,15 +33,10 @@ Set `T3CODE_CHANNEL=nightly` for nightly builds or `T3CODE_VERSION=<ver>` to pin
 
 If `t3` reports a server is already running, connect with `t3 pair` or pass a separate `--base-dir`. Run `t3 --help` for all commands.
 
-### Intel Macs
+### Build from source
 
-There is no standalone `t3` binary for Intel Macs—use the desktop app, or build a server from source with `vp` ([development runbook](../operations/00_development.md#first-checkout)):
-
-```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
-node apps/server/dist/bin.mjs
-```
+For other platforms, follow the [development runbook](../operations/00_development.md#first-checkout)
+and run `vp run --filter t3 build`, then `node apps/server/dist/bin.mjs`.
 
 ## Desktop app
 

@@ -1,6 +1,20 @@
 # Release Runbook
 
-Unified release workflow: `.github/workflows/release.yml`. Beta is a product label, not a release channel—channels remain `stable` and `nightly` (plus `preview` for maintainer test builds).
+## Fork CLI releases
+
+Push a new tag of the form `vX.Y.Z-privacy.N` to `golitedev/t3privacy`. The
+[Fork CLI release workflow](../../.github/workflows/fork-cli-release.yml) builds
+and smoke-tests the Linux x64 archive, then publishes it to GitHub Releases
+with the installer and checksums. Increment `N` for builds based on the same
+upstream version. Each tag identifies an immutable build used by `t3 update`.
+
+See the [fork installation guide](../user/install.md#command-line) for the
+installer command.
+
+## Upstream release reference
+
+Unified upstream release workflow is `.github/workflows/release.yml`. Its
+publish jobs are scoped to the upstream repository.
 
 ## Channels and triggers
 

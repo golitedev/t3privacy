@@ -6,6 +6,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
+  CLI_LATEST_RELEASE_API_URL,
   CLI_RELEASES_PAGE_URL,
   cliReleaseChannelOf,
   cliReleaseIndexPageUrl,
@@ -68,10 +69,10 @@ async function fetchReleases(url: string, accept: string, signal: AbortSignal) {
 
 export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
   const channel = cliReleaseChannelOf(currentVersion);
-  // Public release pages avoid the anonymous API quota shared by devices on the same network.
+  // Use the stable release pointer or the public feed for other channels.
   const response = await fetchReleases(
-    channel === "stable" ? `${CLI_RELEASES_PAGE_URL}/latest` : `${CLI_RELEASES_PAGE_URL}.atom`,
-    channel === "stable" ? "application/json" : "application/atom+xml",
+    channel === "stable" ? CLI_LATEST_RELEASE_API_URL : `${CLI_RELEASES_PAGE_URL}.atom`,
+    channel === "stable" ? "application/vnd.github+json" : "application/atom+xml",
     signal,
   );
   const releases =
