@@ -1,8 +1,12 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { it as effectIt } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import type * as NodeOS from "node:os";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveBoundEndpoints } from "./DirectEndpoints.ts";
+import { readIsolatedLinuxBridges, resolveBoundEndpoints } from "./DirectEndpoints.ts";
 
 const INTERFACES: ReturnType<typeof NodeOS.networkInterfaces> = {
   lo0: [
@@ -86,9 +90,16 @@ describe("resolveBoundEndpoints", () => {
       "vEthernet (WSL)": virtualInterface("172.24.0.1"),
       bridge100: virtualInterface("192.168.64.1"),
       vmbr0: virtualInterface("192.168.1.20"),
+      fhciowner: virtualInterface("10.221.0.1"),
     };
     expect(
-      resolveBoundEndpoints({ platform: "linux", host: "0.0.0.0", port: 3773, interfaces }),
+      resolveBoundEndpoints({
+        platform: "linux",
+        host: "0.0.0.0",
+        port: 3773,
+        interfaces,
+        isolatedBridges: new Set(["fhciowner"]),
+      }),
     ).toEqual([
       { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
       { kind: "lan", httpBaseUrl: "http://192.168.1.20:3773/" },
@@ -182,5 +193,33 @@ describe("resolveBoundEndpoints", () => {
         }),
       ).toEqual([]);
     },
+  );
+});
+
+describe("readIsolatedLinuxBridges", () => {
+  effectIt.effect("finds bridges whose ports never reach a NIC, under any name", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sysfs-" });
+      const dirs = [
+        "eth0/device",
+        "eth1/device",
+        "bond0/lower_eth1",
+        "veth1",
+        "br0/bridge",
+        "br0/brif/eth0",
+        "vmbr0/bridge",
+        "vmbr0/brif/bond0",
+        "fhciowner/bridge",
+        "fhciowner/brif/veth1",
+        "virbr0/bridge",
+      ];
+      for (const dir of dirs) yield* fs.makeDirectory(`${root}/${dir}`, { recursive: true });
+      const names = ["eth0", "bond0", "veth1", "br0", "vmbr0", "fhciowner", "virbr0"];
+      expect([...(yield* readIsolatedLinuxBridges(names, root))].toSorted()).toEqual([
+        "fhciowner",
+        "virbr0",
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

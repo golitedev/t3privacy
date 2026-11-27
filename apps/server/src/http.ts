@@ -1,9 +1,5 @@
 import * as Mime from "effect/http/Mime";
-import {
-  AuthOrchestrationOperateScope,
-  AuthOrchestrationReadScope,
-  EnvironmentHttpApi,
-} from "@t3tools/contracts";
+import { EnvironmentHttpApi } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
 import {
   injectMcpAppCookieBootstrap,
@@ -11,6 +7,7 @@ import {
   injectMcpAppThemeBootstrap,
 } from "@t3tools/shared/mcpApp";
 import { FILE_PREVIEW_SCROLL_SCRIPT } from "@t3tools/shared/htmlRender";
+import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import {
   DESKTOP_READINESS_CHALLENGE_MAX_LENGTH,
   DESKTOP_READINESS_CHALLENGE_PARAM,
@@ -28,7 +25,13 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 import { pipe } from "effect/Function";
-import { HttpEffect, HttpMiddleware, HttpRouter, HttpServerResponse, HttpServerRequest } from "effect/http";
+import {
+  HttpEffect,
+  HttpMiddleware,
+  HttpRouter,
+  HttpServerResponse,
+  HttpServerRequest,
+} from "effect/http";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
@@ -41,13 +44,7 @@ import {
   storeAttachmentUpload,
   validateAttachmentUploadToken,
 } from "./assets/AttachmentUpload.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import {
-  annotateEnvironmentRequest,
-  failEnvironmentScopeRequired,
-  failEnvironmentAuthInvalid,
-  failEnvironmentInternal,
-} from "./auth/http.ts";
+import { annotateEnvironmentRequest } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import {
   browserApiCorsAllowedHeaders,
@@ -64,22 +61,23 @@ const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inlin
 const HTML_CONTENT_SECURITY_POLICY =
   "sandbox allow-scripts allow-forms allow-popups allow-downloads";
 
+const XML_DOCUMENT_MIME_TYPE_PATTERN = /(?:\/xml(?:$|-)|\+xml$)/i;
 // Proxies may strip disposition; force document-capable downloads to octet-stream.
 const DOWNLOAD_MIME_TYPE_PATTERN = /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/;
 const isSafeDownloadMimeType = (mimeType: string): boolean =>
   DOWNLOAD_MIME_TYPE_PATTERN.test(mimeType) &&
-  !/(?:^text\/html$|\/xml(?:$|-)|\+xml$)/i.test(mimeType.trim().toLowerCase());
-const isSafeInlineMediaMimeType = (mimeType: string): boolean =>
-  DOWNLOAD_MIME_TYPE_PATTERN.test(mimeType) && /^(?:audio|video)\//i.test(mimeType);
-const isSafeInlineDocumentMimeType = (mimeType: string): boolean =>
-  mimeType.toLowerCase() === "application/pdf" || mimeType.toLowerCase() === "text/html";
+  !/^text\/html$/i.test(mimeType.trim()) &&
+  !XML_DOCUMENT_MIME_TYPE_PATTERN.test(mimeType.trim());
 
-// XML types render as documents, so they get the same policy as SVG.
-const isScriptableXmlPath = (filePath: string): boolean =>
-  Option.match(Mime.getType(filePath), {
-    onNone: () => false,
-    onSome: (mimeType) => /(?:\/xml(?:$|-)|\+xml$)/.test(mimeType),
-  });
+// The served type and its sandbox policy come from this one answer, so they cannot disagree.
+const inlineAssetMimeType = (filePath: string, claimed: string | undefined): string => {
+  const claimedType = claimed?.split(";", 1)[0]?.trim().toLowerCase();
+  if (claimedType !== undefined && DOWNLOAD_MIME_TYPE_PATTERN.test(claimedType)) return claimedType;
+  return (
+    hostPreviewMimeTypeFromExtension(/\.[^./\\]+$/.exec(filePath)?.[0] ?? "") ??
+    Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream")
+  );
+};
 
 export function downloadContentDisposition(fileName?: string): string {
   if (fileName === undefined) {
@@ -106,39 +104,31 @@ export function assetResponseHeaders(
     readonly mimeType?: string;
   },
 ): Record<string, string> {
-  const lowerPath = filePath.toLowerCase();
-  const inlineMimeType = options?.mimeType?.split(";", 1)[0]?.trim();
+  const base = { "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff" };
+  if (options?.download) {
+    return {
+      ...base,
+      "Content-Disposition": downloadContentDisposition(options.fileName),
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Content-Type":
+        options.mimeType !== undefined && isSafeDownloadMimeType(options.mimeType)
+          ? options.mimeType
+          : "application/octet-stream",
+    };
+  }
+  const mimeType = inlineAssetMimeType(filePath, options?.mimeType);
+  if (mimeType === "text/html") {
+    return {
+      ...base,
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": HTML_CONTENT_SECURITY_POLICY,
+    };
+  }
   return {
-    "Cache-Control": "private, max-age=3600",
-    "X-Content-Type-Options": "nosniff",
-    ...(options?.download
-      ? {
-          "Content-Disposition": downloadContentDisposition(options.fileName),
-          "Content-Security-Policy": "default-src 'none'; sandbox",
-          "Content-Type":
-            options.mimeType !== undefined && isSafeDownloadMimeType(options.mimeType)
-              ? options.mimeType
-              : "application/octet-stream",
-        }
-      : inlineMimeType !== undefined && isSafeInlineMediaMimeType(inlineMimeType)
-        ? { "Content-Type": inlineMimeType }
-        : inlineMimeType !== undefined && isSafeInlineDocumentMimeType(inlineMimeType)
-          ? {
-              "Content-Type":
-                inlineMimeType.toLowerCase() === "text/html"
-                  ? "text/html; charset=utf-8"
-                  : "application/pdf",
-              ...(inlineMimeType.toLowerCase() === "text/html"
-                ? { "Content-Security-Policy": HTML_CONTENT_SECURITY_POLICY }
-                : {}),
-            }
-          : lowerPath.endsWith(".html") || lowerPath.endsWith(".htm")
-            ? {
-                "Content-Type": "text/html; charset=utf-8",
-                "Content-Security-Policy": HTML_CONTENT_SECURITY_POLICY,
-              }
-            : {}),
-    ...(!options?.download && isScriptableXmlPath(lowerPath)
+    ...base,
+    "Content-Type": mimeType,
+    // XML types render as documents, so they get the same policy as SVG.
+    ...(XML_DOCUMENT_MIME_TYPE_PATTERN.test(mimeType)
       ? { "Content-Security-Policy": SVG_CONTENT_SECURITY_POLICY }
       : {}),
   };
@@ -180,6 +170,10 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   method: "GET" | "HEAD" = "GET",
 ) {
   const headers = assetResponseHeaders(asset.path, asset);
+  if (asset.renderIntent === "file-preview") {
+    // The signed URL stays the same while the workspace file changes, so a reload must revalidate.
+    headers["Cache-Control"] = "private, no-cache";
+  }
   if (
     asset.renderIntent === "mcp-app" &&
     !asset.download &&
@@ -222,7 +216,7 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   }
   const mediaFile = asset.file;
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
-  const isMedia = /^(?:audio|video)\//i.test(headers["Content-Type"] ?? "");
+  const isMedia = /^(?:audio|video)\//i.test(asset.mimeType ?? "");
   if (isMedia) {
     // Without file identity, validators cannot guarantee byte equality; attachments must also expire with their URL.
     headers["Cache-Control"] = "private, no-store";
@@ -253,10 +247,6 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   }
   if (mediaFile && mediaInfo) {
     const size = bytesToRead ?? mediaInfo.size;
-    headers["Content-Type"] ??= Option.getOrElse(
-      Mime.getType(asset.path),
-      () => "application/octet-stream",
-    );
     headers["Content-Length"] = String(size);
     if (!isMedia) {
       headers["Last-Modified"] = mediaInfo.mtime.toUTCString();
@@ -361,29 +351,6 @@ function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   return redirectUrl.toString();
 }
 
-const authenticateRawRouteWithScope =
-  /* Request instrumentation already owns the span; keep this helper in that context. */
-  Effect.fnUntraced(function* (
-    scope: typeof AuthOrchestrationReadScope | typeof AuthOrchestrationOperateScope,
-  ) {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
-      Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-        failEnvironmentAuthInvalid(
-          EnvironmentAuth.serverAuthCredentialReason(error),
-          EnvironmentAuth.serverAuthDpopFailureReason(error),
-        ),
-      ),
-      Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-        failEnvironmentInternal("internal_error", error),
-      ),
-    );
-    if (!session.scopes.includes(scope)) {
-      return yield* failEnvironmentScopeRequired(scope);
-    }
-  });
-
 export const layerServerEnvironmentHttpApi = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "metadata",
@@ -423,7 +390,6 @@ export const layerDesktopReadinessProofRoute = HttpRouter.add(
 );
 
 const SIGNED_URL_ROUTE_OPTIONS = { redactedParams: ["*"] };
-
 
 // Request spans otherwise parent to the server's lifetime span, so every request shares one trace id.
 export const withRootRequestSpans = <A, E, R>(layer: Layer.Layer<A, E, R>) =>

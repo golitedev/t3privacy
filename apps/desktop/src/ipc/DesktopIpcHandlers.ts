@@ -40,6 +40,7 @@ import {
 } from "./methods/updates.ts";
 import {
   getAppBranding,
+  getDatabaseMigrationProgress,
   getLocalEnvironmentBootstraps,
   getLocalEnvironmentBearerToken,
   getSystemLocale,
@@ -111,6 +112,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handleSync(getLocalEnvironmentEnabled);
   yield* ipc.handle(setLocalEnvironmentEnabled);
   yield* ipc.handle(getHostEnvironmentId);
+  yield* ipc.handle(getDatabaseMigrationProgress);
   yield* ipc.handle(getLocalEnvironmentBearerToken);
 
   yield* ipc.handle(startFileDrag);

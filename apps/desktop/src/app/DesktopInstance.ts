@@ -33,7 +33,6 @@ export class DesktopInstance extends Context.Service<
   }
 >()("@t3tools/desktop/app/DesktopInstance") {}
 
-
 /** @public */
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;

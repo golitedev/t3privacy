@@ -12,7 +12,6 @@ import {
   type AgentSessionProjectCandidate,
   type AuthEnvironmentScope,
   type AuthSessionState,
-  type EnvironmentCloudLinkStateResult,
   type ServerProvider,
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -41,10 +40,6 @@ const state = vi.hoisted(() => ({
   scan: vi.fn(),
   refreshScan: vi.fn(),
   waitForProject: vi.fn(),
-  cloud: false,
-  auth: { isLoaded: true, isSignedIn: false, userId: null as string | null },
-  linkState: null as unknown,
-  linkError: null as string | null,
   refreshLinkState: vi.fn(),
   scanError: null as string | null,
   scanPending: false,
@@ -328,10 +323,6 @@ function setup() {
   state.scan.mockReset();
   state.refreshScan.mockReset();
   state.waitForProject.mockReset().mockImplementation(waitForRecordedProject);
-  state.cloud = false;
-  state.auth = { isLoaded: true, isSignedIn: false, userId: null };
-  state.linkState = Atom.make<EnvironmentCloudLinkStateResult | null>(null).pipe(Atom.keepAlive);
-  state.linkError = null;
   state.refreshLinkState.mockReset();
   state.scanError = null;
   state.scanPending = false;
@@ -725,64 +716,16 @@ it("starts without importing when this connection cannot import projects", async
   expect(state.createProject).not.toHaveBeenCalled();
 });
 
-it("says the phone is set up only once this computer is shared with the signed-in account", async () => {
+it("omits hosted phone setup and usage collection copy", async () => {
   using _now = setup();
-  state.cloud = true;
-  state.auth = { isLoaded: true, isSignedIn: true, userId: "user_1" };
   appAtomRegistry.set(
     sessionAtom(primaryId),
     AsyncResult.success(
       session([AuthOrchestrationOperateScope, AuthRelayReadScope, AuthRelayWriteScope]),
     ),
   );
-  state.linkError = "Could not read T3 Connect link state.";
   await using _screen = await mountWelcome();
-  await click("Set up");
-  // A failed read says so instead of asking to share the computer again.
-  await vi.waitFor(() => expect(pageText()).toContain("Could not check T3 Connect."));
-  expect(pageText()).not.toContain("Set up T3 Connect");
 
-  state.linkError = null;
-  await act(async () =>
-    appAtomRegistry.set(state.linkState as Atom.Writable<EnvironmentCloudLinkStateResult | null>, {
-      linked: false,
-      cloudUserId: null,
-      relayUrl: null,
-      relayIssuer: null,
-      publishAgentActivity: false,
-    }),
-  );
-  // Signed in, but "Not now" on the share step left this computer unreachable.
-  await vi.waitFor(() => expect(pageText()).toContain("Set up T3 Connect"));
-
-  const share = (reachability: EnvironmentCloudLinkStateResult["reachability"]) =>
-    act(async () =>
-      appAtomRegistry.set(
-        state.linkState as Atom.Writable<EnvironmentCloudLinkStateResult | null>,
-        {
-          linked: true,
-          cloudUserId: "user_1",
-          relayUrl: null,
-          relayIssuer: null,
-          managedTunnelActive: true,
-          publishAgentActivity: true,
-          reachability,
-        },
-      ),
-    );
-  const checkedAt = "2026-01-01T00:00:00.000Z";
-  await share({
-    status: "unreachable",
-    checkedAt,
-    cause: "connector_not_running",
-    reason: "The tunnel is not running.",
-    hint: null,
-    fix: "Turn T3 Connect off and on.",
-  });
-  await vi.waitFor(() => expect(pageText()).toContain("Check T3 Connect"));
-  expect(pageText()).not.toContain("Your phone can reach this computer.");
-
-  await share({ status: "reachable", checkedAt, readyConnections: 4, protocol: "quic" });
-  await vi.waitFor(() => expect(pageText()).toContain("Your phone can reach this computer."));
-  expect(pageText()).not.toContain("Check T3 Connect");
+  expect(pageText()).not.toContain("Use T3 Code on your phone");
+  expect(pageText()).not.toContain("collects anonymous usage data");
 });

@@ -28,7 +28,82 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
-import { AcpRegistryOperationError, CommandId, authScopeResponse, AuthAccessStreamError, type AuthAccessStreamEvent, AuthOrchestrationOperateScope, AuthTerminalOperateScope, AuthProvidersManageScope, type AuthEnvironmentScope, ProviderDriverKind, type ScheduledTaskListResult, WorkflowRequestError, AuthSessionId, type DiscoveredLocalServerList, type EditorId, type FileManagerRevealKind, type GitActionProgressEvent, type GitManagerServiceError, type MessageId, type AcpRegistryDeleteSessionInput, type AcpRegistryDisableProviderInput, type AcpRegistryListProvidersInput, type AcpRegistryListSessionsInput, type AcpRegistrySetProviderInput, OrchestrationGetFullThreadDiffError, OrchestrationSearchThreadsError, OrchestrationV2SearchThreadError, OrchestrationGetTurnDiffError, ORCHESTRATION_V2_WS_METHODS, ORCHESTRATION_PROTOCOL_QUERY_PARAM, CLIENT_CAPABILITIES_QUERY_PARAM, SETTINGS_SECRET_REFERENCES_CAPABILITY, ORCHESTRATION_PROTOCOL_VERSION, OrchestrationV2DispatchCommandError, OrchestrationV2GetShellSnapshotError, OrchestrationV2GetThreadProjectionError, OrchestrationV2ThreadLaunchError, type OrchestrationProjectShell, type OrchestrationV2ShellSnapshot, type OrchestrationV2ShellStreamItem, type OrchestrationV2ThreadStreamItem, type ApplicationStoredEvent, type ProjectEntriesFailure, type ProjectFileFailure, type ProjectFileOperation, type ProjectMutation, ProjectListEntriesError, ProjectReadFileError, ProjectSearchContentsError, ProjectSearchEntriesError, ProjectWriteFileError, ProjectMutationError, ProviderUploadFeedbackError, ProviderSetupError, type ServerConfig as ClientServerConfig, type ServerConfigStreamEvent, type ServerLifecycleStreamEvent, type ServerProvider, serverProviderDeltas, type FilesystemBrowseFailure, FilesystemBrowseError, AssetWorkspaceContextNotFoundError, AssetWorkspaceContextResolutionError, SOURCE_CONTROL_MEDIA_ASSET, ChatAttachmentId, PersistChatAttachmentsError, RpcClientId, EnvironmentAuthorizationError, ThreadId, type TerminalMetadataStreamEvent, type PullRequestRef, WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
+import {
+  AcpRegistryOperationError,
+  CommandId,
+  authScopeResponse,
+  AuthAccessStreamError,
+  type AuthAccessStreamEvent,
+  AuthOrchestrationOperateScope,
+  AuthTerminalOperateScope,
+  AuthProvidersManageScope,
+  type AuthEnvironmentScope,
+  ProviderDriverKind,
+  type ScheduledTaskListResult,
+  WorkflowRequestError,
+  AuthSessionId,
+  type DiscoveredLocalServerList,
+  type EditorId,
+  type FileManagerRevealKind,
+  type GitActionProgressEvent,
+  type GitManagerServiceError,
+  type MessageId,
+  type AcpRegistryDeleteSessionInput,
+  type AcpRegistryDisableProviderInput,
+  type AcpRegistryListProvidersInput,
+  type AcpRegistryListSessionsInput,
+  type AcpRegistrySetProviderInput,
+  OrchestrationGetFullThreadDiffError,
+  OrchestrationSearchThreadsError,
+  OrchestrationV2SearchThreadError,
+  OrchestrationGetTurnDiffError,
+  ORCHESTRATION_V2_WS_METHODS,
+  ORCHESTRATION_PROTOCOL_QUERY_PARAM,
+  CLIENT_CAPABILITIES_QUERY_PARAM,
+  SETTINGS_SECRET_REFERENCES_CAPABILITY,
+  HTTP_USAGE_LIMIT_SOURCES_CAPABILITY,
+  ORCHESTRATION_PROTOCOL_VERSION,
+  OrchestrationV2DispatchCommandError,
+  OrchestrationV2GetShellSnapshotError,
+  OrchestrationV2GetThreadProjectionError,
+  OrchestrationV2ThreadLaunchError,
+  type OrchestrationProjectShell,
+  type OrchestrationV2ShellSnapshot,
+  type OrchestrationV2ShellStreamItem,
+  type OrchestrationV2ThreadStreamItem,
+  type ApplicationStoredEvent,
+  type ProjectEntriesFailure,
+  type ProjectFileFailure,
+  type ProjectFileOperation,
+  type ProjectMutation,
+  ProjectListEntriesError,
+  ProjectReadFileError,
+  ProjectSearchContentsError,
+  ProjectSearchEntriesError,
+  ProjectWriteFileError,
+  ProjectMutationError,
+  ProviderUploadFeedbackError,
+  ProviderSetupError,
+  type ServerConfig as ClientServerConfig,
+  type ServerConfigStreamEvent,
+  type ServerLifecycleStreamEvent,
+  type ServerProvider,
+  serverProviderDeltas,
+  type FilesystemBrowseFailure,
+  FilesystemBrowseError,
+  AssetWorkspaceContextNotFoundError,
+  AssetWorkspaceContextResolutionError,
+  SOURCE_CONTROL_MEDIA_ASSET,
+  ChatAttachmentId,
+  PersistChatAttachmentsError,
+  RpcClientId,
+  EnvironmentAuthorizationError,
+  ThreadId,
+  type TerminalMetadataStreamEvent,
+  type PullRequestRef,
+  WS_METHODS,
+  WsRpcGroup,
+} from "@t3tools/contracts";
 import {
   HttpRouter,
   HttpServerRequest,
@@ -141,6 +216,7 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -719,7 +795,10 @@ function hasCompatibleOrchestrationProtocol(url: URL): boolean {
 
 function readSettingsClient(url: URL) {
   const capabilities = url.searchParams.get(CLIENT_CAPABILITIES_QUERY_PARAM)?.split(",") ?? [];
-  return { secretReferences: capabilities.includes(SETTINGS_SECRET_REFERENCES_CAPABILITY) };
+  return {
+    secretReferences: capabilities.includes(SETTINGS_SECRET_REFERENCES_CAPABILITY),
+    httpUsageLimitSources: capabilities.includes(HTTP_USAGE_LIMIT_SOURCES_CAPABILITY),
+  };
 }
 
 function shouldUseBoundedThreadSnapshot(input: {
@@ -1289,7 +1368,7 @@ export const layerWsRpc = (
   _clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
-  settingsClient: { readonly secretReferences: boolean },
+  settingsClient: ServerSettings.SettingsClient,
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -1407,6 +1486,8 @@ export const layerWsRpc = (
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFolders = yield* WorkspaceFolders.WorkspaceFolders;
       const taskFolders = yield* TaskFolders.TaskFolders;
+      const layoutCommandApprovalWrites =
+        yield* LayoutCommandApprovalWrites.LayoutCommandApprovalWrites;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
@@ -1452,9 +1533,11 @@ export const layerWsRpc = (
             };
       // A project's layout command is its owner's code: only a session that may already run
       // commands on the host has it run from a worktree request.
-      const projectCommands =
+      const projectCommands: TaskFolders.ProjectCommands =
         currentSession.scopes.includes(AuthOrchestrationOperateScope) ||
-        currentSession.scopes.includes(AuthTerminalOperateScope);
+        currentSession.scopes.includes(AuthTerminalOperateScope)
+          ? "permitted"
+          : "request-not-permitted";
       const authorizeEffect = <A, E, R>(
         requiredScope: AuthEnvironmentScope,
         effect: Effect.Effect<A, E, R>,
@@ -2158,17 +2241,36 @@ export const layerWsRpc = (
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribePromptSuggestion]: (input) =>
           providerSessionManager.subscribePromptSuggestion(input.threadId),
-        [WS_METHODS.workflowsSubscribe]: (_input) => workflows.watch,
+        [WS_METHODS.workflowsSubscribe]: (input) =>
+          input.changes === true ? workflows.watch : Workflows.wholeLists(workflows.watch),
         [WS_METHODS.workflowsCounts]: (_input) => workflows.counts,
         [WS_METHODS.workflowsGet]: (input) =>
           workflows.get(input.runId).pipe(Effect.mapError(toWorkflowRequestError)),
+        [WS_METHODS.workflowsAbout]: (input) =>
+          workflows.about(input).pipe(Effect.mapError(toWorkflowRequestError)),
         [WS_METHODS.workflowsAnswer]: (input) =>
-          workflows
-            .answer(input.runId, input.name, {
-              choice: input.choice,
-              ...(input.reason === undefined ? {} : { reason: input.reason }),
-            })
-            .pipe(Effect.mapError(toWorkflowRequestError)),
+          serverAuth.listClientSessions(currentSessionId).pipe(
+            Effect.map((sessions) =>
+              EnvironmentAuth.clientSessionLabel(
+                sessions.find((session) => session.current)?.client,
+              ),
+            ),
+            Effect.orElseSucceed(() => EnvironmentAuth.clientSessionLabel(undefined)),
+            // The label names it to others; the session tells its own client the answer is its own.
+            Effect.map((label) => ({ label, sessionId: currentSessionId })),
+            Effect.flatMap((answeredBy) =>
+              workflows.answer(
+                input.runId,
+                input.name,
+                {
+                  choice: input.choice,
+                  ...(input.reason === undefined ? {} : { reason: input.reason }),
+                },
+                answeredBy,
+              ),
+            ),
+            Effect.mapError(toWorkflowRequestError),
+          ),
         [WS_METHODS.workflowsResume]: (input) =>
           workflows.resume(input.runId).pipe(Effect.mapError(toWorkflowRequestError)),
         [WS_METHODS.workflowsCancel]: (input) =>
@@ -2196,7 +2298,8 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.rotateWebhookToken(input)),
           ),
-        [WS_METHODS.guestShareCreate]: () => Effect.fail(new GuestShareCreateError({ reason: "disabled" })),
+        [WS_METHODS.guestShareCreate]: () =>
+          Effect.fail(new GuestShareCreateError({ reason: "disabled" })),
         [WS_METHODS.secretsAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(secretRequests.answer(input)),
@@ -2427,6 +2530,14 @@ export const layerWsRpc = (
                 }),
             };
           }),
+        [WS_METHODS.serverGetProviderRuntimeModeLimits]: Effect.fnUntraced(function* (input) {
+          return {
+            limits: yield* providerRegistry.runtimeModeLimits({
+              instanceId: input.instanceId,
+              scanCwd: yield* projectService.workspaceScanDirectory(input.cwd),
+            }),
+          };
+        }),
         [WS_METHODS.mcpAppsCallTool]: (input) => mcpAppRequests.callTool(input),
         [WS_METHODS.mcpAppsToolInfo]: (input) => mcpAppRequests.toolInfo(input),
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
@@ -2907,6 +3018,16 @@ export const layerWsRpc = (
         [WS_METHODS.workspaceTaskFolder]: (input) =>
           taskFolders.find(input.worktreePath).pipe(Effect.map((taskFolder) => ({ taskFolder }))),
         [WS_METHODS.workspaceAddTaskFolderRepository]: (input) => taskFolders.addRepository(input),
+        [WS_METHODS.workspaceLayoutCommands]: (input) =>
+          taskFolders.layoutCommands(input.projectId),
+        // The one place an approval is recorded: a person's client session, behind the scope.
+        [WS_METHODS.workspaceApproveLayoutCommands]: (input) =>
+          Effect.forEach(
+            input.approvals,
+            (approval) =>
+              layoutCommandApprovalWrites.set({ projectId: input.projectId, ...approval }),
+            { discard: true },
+          ).pipe(Effect.andThen(taskFolders.layoutCommands(input.projectId))),
         [WS_METHODS.attachmentsCreateUploadUrl]: (input) => issueAttachmentUploadUrl(input),
         [WS_METHODS.attachmentsDelete]: (input) => deletePendingAttachment(input.attachmentId),
         [WS_METHODS.agentSessionsScan]: () => agentSessionScanner.scan,
@@ -3552,10 +3673,7 @@ export const layer = Layer.unwrap(
           yield* RpcServer.make(ServerWsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
             Effect.provideService(RpcServer.Protocol, withOutputWindow(protocol)),
             Effect.provide(
-              Layer.merge(
-                RpcAuthorization.layer(session.scopes),
-                rpcInstrumentationLayer,
-              ),
+              Layer.merge(RpcAuthorization.layer(session.scopes), rpcInstrumentationLayer),
             ),
             Effect.forkScoped,
           );

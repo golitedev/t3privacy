@@ -1,11 +1,8 @@
 import type { EnvironmentPresentation } from "~/state/environments";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
-import { m } from "~/i18n/messages";
 import { PlusIcon } from "lucide-react";
-import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 import { T, useGT, useMessages } from "gt-react";
-import { type DesktopDiscoveredSshHost } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -22,27 +19,18 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { Button } from "../ui/button";
 import { connectPairing as connectPairingAtom } from "~/connection/onboarding";
 import type { AddEnvironmentPrefill } from "~/state/linkedThreadView";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { primaryServerKeybindingsAtom } from "~/state/server";
 import { parsePairingUrlFields, parseRemotePairingFields } from "./ConnectionsSettings.logic";
-
-const SSH_PROTOCOL_NAME = "SSH";
-const EMPTY_DISCOVERED_SSH_HOSTS: ReadonlyArray<DesktopDiscoveredSshHost> = [];
-// known_hosts can list one host on several ports. Its own bracketed form keeps an IPv6
-// host's port separate from the address; no portless known_hosts entry has that form.
-const sshHostSuggestionValue = (target: DesktopDiscoveredSshHost) =>
-  target.port === null ? target.alias : `[${target.alias}]:${target.port}`;
 
 export function AddEnvironmentDialog({
   open,
   prefill = null,
   routeTarget,
   error,
-  savedEnvironments,
   initialHost = "",
   onOpenChange,
   onErrorChange,
@@ -54,14 +42,11 @@ export function AddEnvironmentDialog({
   /** An address already known for the machine being added, such as one a link uses. */
   readonly initialHost?: string;
   readonly error: string | null;
-  readonly savedEnvironments: ReadonlyArray<EnvironmentPresentation>;
   readonly onOpenChange: (open: boolean) => void;
   readonly onErrorChange: (error: string | null) => void;
 }) {
   const gt = useGT();
   const m = useMessages();
-  const desktopBridge = window.desktopBridge;
-  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const connectPairing = useAtomCommand(connectPairingAtom, { reportFailure: false });
   const [savedBackendHost, setSavedBackendHost] = useState(prefill?.host ?? initialHost);
   const [savedBackendPairingCode, setSavedBackendPairingCode] = useState("");
@@ -188,15 +173,16 @@ export function AddEnvironmentDialog({
     </div>
   );
   const renderRemoteModeBody = () => (
-    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void handleAddSavedBackend(); }}>
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleAddSavedBackend();
+      }}
+    >
       {renderRemoteFields()}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      <Button
-        variant="outline"
-        className="w-full"
-        disabled={isAddingSavedBackend}
-        type="submit"
-      >
+      <Button variant="outline" className="w-full" disabled={isAddingSavedBackend} type="submit">
         <PlusIcon className="size-3.5" />
         {isAddingSavedBackend
           ? gt("Adding…")
@@ -209,25 +195,25 @@ export function AddEnvironmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DialogTrigger
-              render={
-                <Button size="xs" variant="ghost-muted" aria-label={gt("Add environment")}>
-                  <PlusIcon className="size-3" />
-                  <span>
-                    <T>Add environment</T>
-                  </span>
-                </Button>
-              }
-            />
-          }
-        />
-        <TooltipPopup side="top">
-          <T>Add environment</T>
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <DialogTrigger
+            render={
+              <Button size="xs" variant="ghost-muted" aria-label={gt("Add environment")}>
+                <PlusIcon className="size-3" />
+                <span>
+                  <T>Add environment</T>
+                </span>
+              </Button>
+            }
+          />
+        }
+        label={
+          <>
+            <T>Add environment</T>
+          </>
+        }
+      />
       <DialogPopup className="max-h-[80dvh] sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
@@ -250,9 +236,7 @@ export function AddEnvironmentDialog({
                 : gt("Pair another environment to this client.")}
           </DialogDescription>
         </DialogHeader>
-        <DialogPanel>
-          {renderRemoteModeBody()}
-        </DialogPanel>
+        <DialogPanel>{renderRemoteModeBody()}</DialogPanel>
       </DialogPopup>
     </Dialog>
   );

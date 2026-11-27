@@ -1,18 +1,17 @@
-import { Atom, AsyncResult } from "effect/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
 import { page, userEvent } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { render, stubGlobal } from "../../../test/render";
+import { render } from "../../../test/render";
 import { AppAtomRegistryProvider } from "../../rpc/atomRegistry";
 
 const mocks = vi.hoisted(() => ({
-  connectSshEnvironment: vi.fn<() => Promise<AtomCommandResult<void, Error>>>(async () =>
-    AsyncResult.success(undefined),
-  ),
-  refresh: () => {},
+  connectPairing: vi.fn<
+    (input: { host: string; pairingCode: string }) => Promise<AtomCommandResult<void, Error>>
+  >(async () => AsyncResult.success(undefined)),
 }));
 
 vi.mock(import("../../state/use-atom-command"), async (original) => ({
@@ -21,24 +20,7 @@ vi.mock(import("../../state/use-atom-command"), async (original) => ({
 }));
 vi.mock(import("~/connection/onboarding"), async (original) => ({
   ...(await original()),
-  connectSshEnvironment: mocks.connectSshEnvironment as never,
-}));
-vi.mock(import("~/state/query"), async (original) => ({
-  ...(await original()),
-  useEnvironmentQuery: (() => ({
-    data: [],
-    isPending: false,
-    error: null,
-    refresh: mocks.refresh,
-  })) as never,
-}));
-vi.mock(import("~/state/environments"), async (original) => ({
-  ...(await original()),
-  useRelayEnvironmentDiscovery: (() => ({ environments: new Map() })) as never,
-}));
-vi.mock(import("~/state/server"), async (original) => ({
-  ...(await original()),
-  primaryServerKeybindingsAtom: Atom.make([]) as never,
+  connectPairing: mocks.connectPairing as never,
 }));
 
 import { AddEnvironmentDialog } from "./AddEnvironmentDialog";
@@ -52,7 +34,6 @@ function Owner() {
         open={open}
         routeTarget={null}
         error={error}
-        savedEnvironments={[]}
         onOpenChange={setOpen}
         onErrorChange={setError}
       />
@@ -60,98 +41,55 @@ function Owner() {
   );
 }
 
-function setup() {
-  mocks.connectSshEnvironment.mockClear();
-  return stubGlobal("desktopBridge", {});
-}
+const dialog = () => page.getByRole("dialog");
+const host = () => dialog().getByRole("textbox", { name: "Host" });
+const code = () => dialog().getByRole("textbox", { name: "Pairing code" });
 
-const remoteCard = () => page.getByRole("button", { name: /Remote link/ });
-const sshCard = () => page.getByRole("button", { name: /^SSH/ });
-
-async function openDialogOnSsh() {
+async function openDialog() {
   await userEvent.click(page.getByRole("button", { name: "Add environment" }));
-  await userEvent.click(sshCard());
-  await expect.element(sshCard()).toHaveAttribute("aria-pressed", "true");
-}
-
-async function expectDefaultModeAfterReopen() {
-  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-  await userEvent.click(page.getByRole("button", { name: "Add environment" }));
-  await expect.element(remoteCard()).toHaveAttribute("aria-pressed", "true");
-  await expect.element(sshCard()).toHaveAttribute("aria-pressed", "false");
-  await expect.element(page.getByPlaceholder("backend.example.com")).toBeInTheDocument();
+  await expect.element(dialog()).toBeVisible();
 }
 
 describe("AddEnvironmentDialog", () => {
-  it("reopens on Remote link after adding an SSH environment", async () => {
-    using _bridge = setup();
+  it("pairs directly with the LAN host from a pasted pairing link", async () => {
+    mocks.connectPairing.mockReset().mockResolvedValue(AsyncResult.success(undefined));
     await using _screen = await render(<Owner />);
 
-    await openDialogOnSsh();
-    await userEvent.fill(page.getByPlaceholder("Search hosts or type devbox"), "devbox");
-    await userEvent.click(
-      page.getByRole("dialog").getByRole("button", { name: "Add environment" }),
-    );
-    expect(mocks.connectSshEnvironment).toHaveBeenCalledOnce();
-
-    await expectDefaultModeAfterReopen();
-  });
-
-  it("drops an SSH error when switching to Remote link", async () => {
-    using _bridge = setup();
-    await using _screen = await render(<Owner />);
-
-    mocks.connectSshEnvironment.mockResolvedValueOnce(
-      AsyncResult.failure(Cause.fail(new Error("ssh: connection refused"))),
-    );
-    await openDialogOnSsh();
-    await userEvent.type(page.getByPlaceholder("Search hosts or type devbox"), "devbox");
-    await userEvent.click(
-      page.getByRole("dialog").getByRole("button", { name: "Add environment" }),
-    );
-    await expect.element(page.getByText(/connection refused/)).toBeInTheDocument();
-
-    await userEvent.click(remoteCard());
-    await expect.element(page.getByText(/connection refused/)).not.toBeInTheDocument();
-  });
-
-  it("clears the form after dismissing it on SSH", async () => {
-    using _bridge = setup();
-    await using _screen = await render(<Owner />);
-
-    await openDialogOnSsh();
-    await userEvent.click(remoteCard());
-    await userEvent.fill(page.getByPlaceholder("backend.example.com"), "devbox.example.com");
-    await userEvent.fill(page.getByPlaceholder("PAIRCODE"), "PAIRCODE");
-    await userEvent.click(sshCard());
-    await userEvent.fill(page.getByPlaceholder("Search hosts or type devbox"), "devbox");
-    await userEvent.fill(page.getByPlaceholder("root"), "maria");
-    await userEvent.fill(page.getByPlaceholder("22"), "2222");
-    await userEvent.keyboard("{Escape}");
-
-    await expectDefaultModeAfterReopen();
-    await expect.element(page.getByPlaceholder("backend.example.com")).toHaveValue("");
-    await expect.element(page.getByPlaceholder("PAIRCODE")).toHaveValue("");
-    await userEvent.click(sshCard());
-    await expect.element(page.getByPlaceholder("Search hosts or type devbox")).toHaveValue("");
-    await expect.element(page.getByPlaceholder("root")).toHaveValue("");
-    await expect.element(page.getByPlaceholder("22")).toHaveValue("");
-
-    let finishConnection!: (result: AtomCommandResult<void, Error>) => void;
-    const pending = new Promise<AtomCommandResult<void, Error>>((resolve) => {
-      finishConnection = resolve;
+    await openDialog();
+    await userEvent.fill(host(), "http://192.168.1.20:3773/#token=PAIRCODE");
+    await expect.element(host()).toHaveValue("http://192.168.1.20:3773");
+    await expect.element(code()).toHaveValue("PAIRCODE");
+    await userEvent.click(dialog().getByRole("button", { name: "Add environment" }));
+    await expect.element(dialog()).not.toBeInTheDocument();
+    expect(mocks.connectPairing).toHaveBeenCalledExactlyOnceWith({
+      host: "http://192.168.1.20:3773",
+      pairingCode: "PAIRCODE",
     });
-    mocks.connectSshEnvironment.mockImplementationOnce(() => pending);
-    await userEvent.fill(page.getByPlaceholder("Search hosts or type devbox"), "devbox");
-    await userEvent.click(
-      page.getByRole("dialog").getByRole("button", { name: "Add environment" }),
-    );
+  });
+
+  it("shows a rejected pairing attempt beside the form", async () => {
+    mocks.connectPairing
+      .mockReset()
+      .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Pairing expired"))));
+    await using _screen = await render(<Owner />);
+
+    await openDialog();
+    await userEvent.fill(host(), "192.168.1.20:3773");
+    await userEvent.fill(code(), "PAIRCODE");
+    await userEvent.click(dialog().getByRole("button", { name: "Add environment" }));
+    await expect.element(dialog().getByText("Pairing expired")).toBeVisible();
+  });
+
+  it("clears the pairing fields after dismissing the dialog", async () => {
+    await using _screen = await render(<Owner />);
+
+    await openDialog();
+    await userEvent.fill(host(), "192.168.1.20:3773");
+    await userEvent.fill(code(), "PAIRCODE");
     await userEvent.keyboard("{Escape}");
-    await expectDefaultModeAfterReopen();
-    finishConnection(AsyncResult.failure(Cause.fail(new Error("dismissed SSH attempt"))));
-    await expect
-      .element(page.getByRole("dialog").getByRole("button", { name: "Add environment" }))
-      .toBeEnabled();
-    await expect.element(page.getByText(/dismissed SSH attempt/)).not.toBeInTheDocument();
+    await expect.element(dialog()).not.toBeInTheDocument();
+    await openDialog();
+    await expect.element(host()).toHaveValue("");
+    await expect.element(code()).toHaveValue("");
   });
 });

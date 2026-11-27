@@ -7,7 +7,21 @@ import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { type ReactNode, useState } from "react";
 import { T, useGT, useMessages, Var } from "gt-react";
-import { AuthAccessReadScope, AuthAccessWriteScope, AuthEnvironmentMaintainScope, allowsPreviewTunnel, isManagedSettingPath, type AuthClientSession, type AuthPairingLink, type AuthPairingCredentialResult, type AdvertisedEndpoint, type DesktopServerExposureState, type DesktopWslState, EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";
+import {
+  AuthAccessReadScope,
+  AuthAccessWriteScope,
+  AuthEnvironmentMaintainScope,
+  allowsPreviewTunnel,
+  isManagedSettingPath,
+  type AuthClientSession,
+  type AuthPairingLink,
+  type AuthPairingCredentialResult,
+  type AdvertisedEndpoint,
+  type DesktopServerExposureState,
+  type DesktopWslState,
+  EnvironmentId,
+  resolveEnvironmentMachineKind,
+} from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -54,7 +68,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { Button } from "../ui/button";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { type ServerClientSessionRecord } from "~/environments/primary";
@@ -113,10 +127,7 @@ import {
   PairingClientsList,
 } from "./AuthorizedClientsSettings";
 import { ITEM_ROW_CLASSNAME } from "./itemRows";
-import {
-  EmptyRemoteEnvironments,
-  SavedBackendListRow,
-} from "./SavedEnvironmentRows";
+import { EmptyRemoteEnvironments, SavedBackendListRow } from "./SavedEnvironmentRows";
 import { AddEnvironmentDialog } from "./AddEnvironmentDialog";
 import {
   type ConnectDeviceRevokeRequest,
@@ -456,7 +467,6 @@ function ConnectionsSettingsContent({
         directEndpoints: accessEnvironment?.serverConfig?.directEndpoints,
       });
 
-
   const handleDesktopServerExposureChange = async (checked: boolean) => {
     if (
       !desktopBridge ||
@@ -494,8 +504,6 @@ function ConnectionsSettingsContent({
     const checked = pendingDesktopServerExposureMode === "network-accessible";
     void handleDesktopServerExposureChange(checked);
   };
-
-
 
   const handleRevokeDesktopPairingLink = async (id: string) => {
     if (
@@ -637,7 +645,6 @@ function ConnectionsSettingsContent({
   // Removing a T3 Connect route preserves account registration; use a separate dialog pointing to
   // deregistration.
   const handleRemoveSavedBackend = async (environment: EnvironmentPresentation) => {
-
     const confirmed = await requestConfirmDialog(
       gt(
         "Remove {environment} from this device?\nThis forgets its pairing, credentials, and cached threads here. Switch it off instead to keep it saved.",
@@ -1079,25 +1086,25 @@ function ConnectionsSettingsContent({
       control={
         !desktopBridge &&
         (currentAuthPolicy === "remote-reachable" || currentAuthPolicy === "loopback-browser") ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="inline-flex">
-                  <Switch
-                    checked={isLocalBackendNetworkAccessible}
-                    disabled
-                    aria-label={gt("Enable network access")}
-                  />
-                </span>
-              }
-            />
-            <TooltipPopup side="top">
-              <T>
-                Network exposure changes restart the backend and must be controlled where the server
-                process is launched.
-              </T>
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Switch
+                  checked={isLocalBackendNetworkAccessible}
+                  disabled
+                  aria-label={gt("Enable network access")}
+                />
+              </span>
+            }
+            label={
+              <>
+                <T>
+                  Network exposure changes restart the backend and must be controlled where the
+                  server process is launched.
+                </T>
+              </>
+            }
+          />
         ) : undefined
       }
     />
@@ -1549,7 +1556,6 @@ function ConnectionsSettingsContent({
               routeTarget={routeTarget}
               initialHost={addBackendHost}
               error={savedBackendError}
-              savedEnvironments={savedEnvironments}
               onOpenChange={handleAddBackendDialogOpenChange}
               onErrorChange={setSavedBackendError}
             />
@@ -1589,7 +1595,9 @@ function ConnectionsSettingsContent({
                 onAddRoute={openAddRoute}
               />
             ))}
-            {listedEnvironments.length === 0 ? <EmptyRemoteEnvironments cloudEnabled={false} /> : null}
+            {listedEnvironments.length === 0 ? (
+              <EmptyRemoteEnvironments cloudEnabled={false} />
+            ) : null}
           </>
         )}
       </SettingsSection>

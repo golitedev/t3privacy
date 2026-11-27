@@ -117,10 +117,8 @@ const layerWakeups = Wakeups.layer({
                 return;
               }
               if (state === "active") {
-                Queue.offerUnsafe(
-                  queue,
-                  mobileApplicationActiveWakeup(backgroundedAtMs, Date.now()),
-                );
+                const wakeup = mobileApplicationActiveWakeup(backgroundedAtMs, Date.now());
+                if (wakeup !== null) Queue.offerUnsafe(queue, wakeup);
                 backgroundedAtMs = null;
               }
             });
@@ -135,7 +133,7 @@ const layerWakeups = Wakeups.layer({
 });
 
 const layerCapabilities = Layer.effectContext(
-  Effect.gen(function* () {
+  Effect.sync(() => {
     return Context.make(
       ClientCapabilities.PrimaryEnvironmentAuth,
       ClientCapabilities.PrimaryEnvironmentAuth.of({ bearerToken: Effect.succeedNone }),
